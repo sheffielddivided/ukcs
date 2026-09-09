@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UKCS Oil &amp; Gas Production Explorer</title>
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/maplibre-gl@6.8.0/dist/maplibre-gl.css"
+    integrity="sha256-ji27qzEtxXZW+7dun6UwjHXJ18e6WAin1VvNtkzIE/o="
+    crossorigin="anonymous"
+  />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header>
+    <h1>UKCS Oil &amp; Gas Production Explorer</h1>
+    <span class="subtitle">North Sea Transition Authority open data &mdash; not an official NSTA product</span>
+  </header>
+
+  <div id="status-banner" hidden></div>
+
+  <div id="layout">
+    <aside id="sidebar">
+      <label for="operator-filter">Operator</label>
+      <select id="operator-filter">
+        <!-- populated from fields.geojson at load time -->
+      </select>
+
+      <div class="legend">
+        <h2>Marker colour</h2>
+        <div class="legend-row">
+          <span class="legend-swatch oil"></span> Oil-dominant field
+        </div>
+        <div class="legend-row">
+          <span class="legend-swatch gas"></span> Gas-dominant field
+        </div>
+        <div class="legend-row">
+          <span class="legend-swatch none"></span> No latest-period production
+        </div>
+        <div class="legend-note">
+          Dominant commodity is by share of a combined boe/d figure computed only for
+          marker sizing (1 boe = 5.8 Mscf gas). Marker radius &prop; &radic;(boe/d).
+          This conversion is not applied anywhere else and is not part of the
+          underlying data.
+        </div>
+        <div class="legend-note">
+          Operator shown is the <em>current</em> operator of record, applied
+          retrospectively to all periods (see spec section 6.1). Not
+          necessarily who operated the field historically.
+        </div>
+      </div>
+    </aside>
+
+    <div id="map-container">
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <footer>
+    <span id="footer-text">Loading&hellip;</span>
+  </footer>
+
+  <script type="module" src="./app/main.js"></script>
+</body>
+</html>
