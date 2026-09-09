@@ -98,6 +98,46 @@ Summary of corrections:
   `etl/equity_field_matching_report.md` for the full unmatched-field lists and the structural
   (non-naming) mismatches investigated and left unmatched rather than guessed at.
 
+### 0.3 What changed in v2.4
+
+Sections 15.3 and 15.4 have been corrected against a dedicated interval-semantics investigation
+(`etl/equity_interval_diagnostics.py`, `etl/equity_interval_diagnostics_report.md`, 2026-09-09),
+run before writing the real interval join. **Interval-treatment rules in these two sections are
+marked PENDING, not settled**, until the real join (build order step 4) is written against the
+corrections below.
+
+Summary of corrections:
+
+- **838 zero-duration rows** (`start_date == end_date`), not "possibly a few noticed during
+  milestone 1's spot-check" — 10.9% of all rows. Classified by relationship to neighbouring rows:
+  689 `boundary_duplicate`, 91 `boundary_transition`, 42 `termination_marker`, 16
+  `standalone_snapshot`. None are discarded; all remain source records. Under the existing
+  half-open containment test, they are already mathematically inert (a `[d, d)` interval matches
+  no month) — no special-casing is needed to exclude them from any sum.
+- **`E7` (`start_date < end_date`, strict, build-breaking) cannot ship as worded** — corrected to
+  accept `start_date <= end_date`, treating zero-duration rows as non-interest-bearing event
+  records rather than errors.
+- **One genuine overlapping-interval error found and confirmed real, not hypothetical**:
+  `ROCHELLE`, August 2011, two companies' rows overlap by one month, producing a 200% field-month
+  sum. This is exactly what `E4` (kept, scoped to same-(field, company) overlaps) must catch.
+- **`Equity Share Time Period` is proven fully derived from Start/End Date** at year granularity
+  (zero exceptions across 7,683 rows) — confirmed to carry no independent information and to never
+  conflict with the dates. Policy C (prefer the label on conflict) is therefore numerically
+  identical to the literal half-open test on this workbook; retain the label as source metadata
+  only.
+- **4 future-dated rows** (`ALVHEIM`, `STATFJORD(CROSS BORDER)`, `MURLACH [pt of MARNOCK-SKUA]`
+  ×2) each leave their field with zero current equity coverage, correctly and without
+  special-casing, under the existing containment test — no repair or quarantine needed. `E5` is
+  corrected to not treat this as a coverage-gap failure.
+- **Zero-interest rows (241, 218 with Operator Flag='Y') are confirmed, not just anticipated**:
+  86% of the Operator-Flag='Y' zero-interest rows coincide with a different company holding the
+  real equity for the same period, confirming Operator Flag records operatorship independently of
+  economic interest. The existing default (retain as source records, exclude from the `E1` sum) is
+  confirmed correct by this evidence, not merely assumed.
+- **No sentinel (`1900-01-01`-style) dates exist** in the live 7,683-row workbook — the earliest
+  observed start date is 1968-08-01. Detection logic is retained defensively; it currently never
+  fires.
+
 ---
 
 ## 1. Purpose
@@ -932,10 +972,18 @@ archive is a structural guide, not a schema contract.
 
 ### 15.3 The interval join
 
+**Status: interval-treatment rules below are PENDING, not settled.** A dedicated investigation
+(`etl/equity_interval_diagnostics.py`, `etl/equity_interval_diagnostics_report.md`, 2026-09-09)
+found that the live workbook's edge cases are far more material than earlier drafts of this
+section assumed. The half-open convention and the E7 rule as originally worded are contradicted
+by the source data and must not be read as settled until the real interval join (build order step
+4) is written against these corrected assumptions.
+
 Equity is a set of validity intervals per (field, company). Production is monthly. The join must
 be an interval containment test, not an equality join.
 
-Canonical definition:
+Canonical definition (unchanged, and confirmed correct by the diagnostic investigation — see
+below):
 
 ```
 equity_production(company, month)
@@ -959,19 +1007,63 @@ Implementation rules:
   October 2016 under a month-start test; the successor row starting the same date does not
   contribute either. This is deliberate and consistent. Document it on the methodology page.
 - An empty end date means open-ended. Represent as `None`, never as a sentinel date.
-- **Sentinel start dates:** the archive contains rows dated `1900-01-01`, which is a placeholder
-  for "unknown / since inception", not a real date. Detect dates before 1960, map them to a
-  `start_is_unknown` flag, and treat the interval as open at the start rather than literally
-  beginning in 1900.
+- **Sentinel start dates: none exist in the live workbook (v2.4 correction).** The archived
+  2014–2020 file was believed to contain rows dated `1900-01-01` ("unknown / since inception").
+  The live 7,683-row workbook (2026-09-09) has **zero** rows with a start date before 1960 (the
+  earliest observed start date is 1968-08-01). Detection logic (dates before 1960 → a
+  `start_is_sentinel` flag) is retained defensively in `etl/equity_parse.py`, but it currently
+  never fires. Re-verify this whenever the live source changes materially.
+- **Zero-duration rows: 838 exist, not "possibly a few" (v2.4 correction).** Rows where
+  `start_date == end_date` are common (10.9% of all rows), not a rare anomaly. Under the
+  half-open convention above, a zero-duration interval `[d, d)` is mathematically empty — it
+  never contributes to any month's containment test — so **no special-casing is required to
+  exclude them from the sum**. What is required is that E7 (below) not treat them as a build
+  error. `etl/equity_interval_diagnostics.py` classifies all 838 by relationship to neighbouring
+  rows: 689 `boundary_duplicate` (pct matches the substantive interval starting at the same
+  instant — fully redundant with it), 91 `boundary_transition` (pct differs from that interval —
+  not fully explained, possibly a genuine same-day step-change), 42 `termination_marker` (last
+  recorded entry for a (field, company) pair, no successor), 16 `standalone_snapshot` (the only
+  record that pair ever has, clustering by date across unrelated fields/companies — suggestive of
+  a shared external event, not identified further). None of these are discarded or repaired by
+  the diagnostic; they are retained and classified only.
+- **One genuine overlapping-interval data error found**: `ROCHELLE`, August 2011 — two companies'
+  (CNOOC PETROLEUM EUROPE LIMITED and HARBOUR ENERGY WPUK LIMITED) rows genuinely overlap by one
+  month (one ends 2011-08-31, the next for the same companies starts 2011-08-01), producing a
+  200% sum for that field-month. This is **not** a zero-duration or sentinel-date artifact — it is
+  exactly the kind of error E4 (below) exists to catch, and it currently would not be caught
+  because E4 was drafted without a concrete violation in view.
+- **4 future-dated rows exist** (`ALVHEIM`/AKER BP ASA and `STATFJORD(CROSS BORDER)`/EQUINOR, both
+  starting 2030-05-01; `MURLACH [pt of MARNOCK-SKUA]`/BP and `MURLACH [pt of MARNOCK-SKUA]`/NEO
+  ENERGY, both starting 2050-01-04). Each is the only equity row (or, for MURLACH, one of only two
+  rows) its field has. None overlaps a currently-open interval — there is nothing to overlap with.
+  As of any month up to and including the present, these 3 fields correctly resolve to **zero**
+  active interest under the canonical containment test above, with no special-casing needed: a
+  future `start_date` simply never satisfies `start_date <= month_start` yet. This is a real,
+  explained gap, not a parse error — see the revised E5 below.
+- **1,187 open-ended rows exist**, covering 531 fields. 342 fields have more than one open-ended
+  *positive*-interest row, which is expected (multiple current partners). Zero fields have the
+  *same* company holding more than one open-ended row (which would be a genuine overlap). 528 of
+  531 fields' currently-open interests sum to 100% ±0.5pp; the 3 exceptions are exactly the
+  future-dated-only fields above (no current row at all, not a sum error).
+- **`Equity Share Time Period` is fully derived from Start/End Date** at year granularity, with
+  zero exceptions across all 7,683 rows (`Current` ⟺ `end_date is None`; `Previous-Y1 to Y2` ⟺
+  `start_date.year == Y1 and end_date.year == Y2`, always). It carries no information not already
+  in the two date columns and never conflicts with them. **Retain it as source metadata only.**
+  Do not parse or rely on it for interval resolution — it is strictly less precise than the date
+  columns it is derived from.
 - Build per-field sorted interval structures and resolve each month by binary search. A naive
   nested loop over ~60 years × ~400 fields × ~10 partners will be slow enough to matter in
   Actions.
 
 ### 15.4 Validation rules — all build-breaking
 
+**Status: rules below are PENDING correction, not settled (v2.4).** E7 as originally worded
+cannot ship: 838 live rows violate it. Corrected proposals follow the table; do not implement the
+table's E1/E4/E5/E7 wording literally.
+
 Implement in `etl/validate_equity.py`. Any failure exits non-zero and writes no artifacts.
 
-| # | Rule | Tolerance |
+| # | Rule (original wording — superseded, see corrections below) | Tolerance |
 | --- | --- | --- |
 | E1 | For every (field, month) with production > 0, resolved interests sum to 100% | ±0.5 pp |
 | E2 | No interest is negative | exact |
@@ -986,10 +1078,32 @@ Implement in `etl/validate_equity.py`. Any failure exits non-zero and writes no 
 E1 and E8 are the load-bearing checks. E1 catches parse and interval errors at source; E8 catches
 them at the aggregate. Both must pass.
 
-The archived file contains rows with an interest of `0`. Investigate before deciding how to treat
-them: plausibly carried interests, relinquished positions, or nulled records. If they are
-legitimate zero-interest partner rows, exclude them from the E1 sum but retain them as partner
-records. Do not drop them without establishing what they represent.
+**Corrected proposals (2026-09-09 diagnostic investigation — pending implementation):**
+
+- **E1**: unchanged in intent (sum to 100% ±0.5pp for a field-month with production > 0), but
+  must not fail solely because a field's only equity row(s) are future-dated — that is E5/E6's
+  concern (coverage), not E1's (correctness of whatever interest *is* active).
+- **E2, E3, E6, E8, E9**: no changes proposed; not implicated by this investigation.
+- **E4**: keep the rule, scoped to same-(field, company) overlaps. Confirmed necessary, not just
+  theoretical — the live `ROCHELLE` case is a real violation this rule must catch.
+- **E5**: must not fire on a field whose only equity row(s) have a future `start_date` (the 3
+  cases above) — that gap is real and explained. Should distinguish "no equity row covers this
+  month yet, and none is expected to until a known future date" from "a gap that indicates a
+  parsing or matching failure."
+- **E7**: **cannot remain `start_date < end_date` (strict) on every row** — 838 live rows violate
+  it. Corrected: accept `start_date <= end_date`; treat `start_date == end_date` rows as
+  **non-interest-bearing event records**, not errors — they are inert under the half-open
+  containment test by construction and must never fail the build for that reason alone. A strict
+  `start_date < end_date` check should apply only to non-zero-duration rows.
+
+**Zero-interest rows are confirmed to exist and their intended exclusion is confirmed correct, not
+merely proposed.** 241 rows have `interest_pct == 0` (218 of them also have `Operator Flag = 'Y'`).
+The diagnostic investigation found 86% of the zero-interest, Operator-Flag='Y' rows coincide with
+a *different* company holding the real equity for the same field and period — i.e. Operator Flag
+records operatorship independently of economic interest, and must never be read as implying a
+positive interest. Per the existing default: retain zero-interest rows as source records, but
+exclude them from the E1 sum, since multiplying production by 0% contributes no volume regardless
+of Operator Flag.
 
 ### 15.5 Name reconciliation — the real integration risk
 
