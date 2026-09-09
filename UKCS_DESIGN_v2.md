@@ -138,6 +138,37 @@ Summary of corrections:
   observed start date is 1968-08-01. Detection logic is retained defensively; it currently never
   fires.
 
+### 0.4 What changed in v2.5
+
+Sections 15.3 and 15.4 are updated from PENDING to **APPROVED for the latest-period checkpoint**.
+`etl/equity_join.py` implements the policy decisions v2.4 proposed, resolves active equity
+interests for the single latest PPRS period (currently 202606), and calculates
+equity-attributable production at field × month × legal-entity grain for that period only. See
+`etl/equity_latest_period_join_report.md` for the full run.
+
+Summary:
+
+- Of 250 latest-period producing PPRS fields: **249 fully resolved**, 1 `future_only`
+  (`MURLACH [pt of MARNOCK-SKUA]`, whose only equity rows start 2050-01-04), 0 unmatched, 0
+  quarantined, 0 unresolved_gap.
+- E1 (interest conservation): 249/249 resolved fields pass, 0 fail.
+- E4 (overlap validation): 0 quarantined field-months in the latest period. `ROCHELLE`'s known
+  2011-08 overlap is historical and does not recur; a committed regression fixture reproduces it
+  exactly and confirms the resolver quarantines rather than repairs it.
+- E5 (coverage validation): categories reported separately (resolved / unmatched / future_only /
+  quarantined / unresolved_gap), never collapsed into one count.
+- E7 (interval validity): 0 rows with `start_date > end_date`, checked across the full workbook
+  (not period-scoped, since this is a structural property of the source).
+- E8 (production conservation) by stream: dry gas 100.0%, condensate 100.0%, associated gas
+  99.458%, oil 96.928% coverage — the oil/gas shortfall is entirely `MURLACH`'s real 202606
+  production, excluded because its only equity rows are future-dated.
+- The latest-period company summary uses legal-entity names exactly as recorded in the workbook —
+  no parent-group rollup, no company alias reconciliation (both remain out of scope; spec section
+  15.8 steps 6-7).
+- This is a **diagnostic checkpoint only**: no `docs/data/equity/*` artifacts were created, no
+  UI was changed, and `etl/build.py` was not modified. The full historical join (~60 years ×
+  ~550 fields) remains future work.
+
 ---
 
 ## 1. Purpose
@@ -972,12 +1003,14 @@ archive is a structural guide, not a schema contract.
 
 ### 15.3 The interval join
 
-**Status: interval-treatment rules below are PENDING, not settled.** A dedicated investigation
-(`etl/equity_interval_diagnostics.py`, `etl/equity_interval_diagnostics_report.md`, 2026-09-09)
-found that the live workbook's edge cases are far more material than earlier drafts of this
-section assumed. The half-open convention and the E7 rule as originally worded are contradicted
-by the source data and must not be read as settled until the real interval join (build order step
-4) is written against these corrected assumptions.
+**Status: policy decisions below are APPROVED for the latest-period checkpoint (v2.5,
+2026-09-09)**, implemented in `etl/equity_join.py` and reported in
+`etl/equity_latest_period_join_report.md`. They are not yet exercised against the full
+1975–present history — that remains future work, gated on review of this checkpoint (see
+`etl/equity_interval_diagnostics_report.md` for the investigation that produced them). Two
+specific findings remain genuinely unresolved, not merely deferred: the meaning of the 91
+`boundary_transition` and 16 `standalone_snapshot` zero-duration rows (see below) is not settled
+by this checkpoint and must not be read as such.
 
 Equity is a set of validity intervals per (field, company). Production is monthly. The join must
 be an interval containment test, not an equality join.
@@ -1030,8 +1063,16 @@ Implementation rules:
   (CNOOC PETROLEUM EUROPE LIMITED and HARBOUR ENERGY WPUK LIMITED) rows genuinely overlap by one
   month (one ends 2011-08-31, the next for the same companies starts 2011-08-01), producing a
   200% sum for that field-month. This is **not** a zero-duration or sentinel-date artifact — it is
-  exactly the kind of error E4 (below) exists to catch, and it currently would not be caught
-  because E4 was drafted without a concrete violation in view.
+  exactly the kind of error E4 exists to catch. **Approved policy: quarantine, never repair.** A
+  field-month E4 flags is excluded from any calculated equity total, its coverage status is set to
+  `quarantined`, and it is reported by name with its conflicting companies and source intervals
+  (`etl/equity_join.py`'s `check_e4`). The two or more conflicting interests are never normalised
+  back to 100%, and no owner is ever preferred over another. **This is temporary**: it must be
+  reviewed again before the full historical join, since a policy adequate for one known 2011
+  incident may not be adequate at full-history scale. ROCHELLE itself does not affect the latest
+  period (202606) — it produced no quarantines in the checkpoint run — but a regression fixture
+  reproducing it is committed in `tests/test_equity_join.py` so the quarantine behaviour is
+  verified even though the live case is historical.
 - **4 future-dated rows exist** (`ALVHEIM`/AKER BP ASA and `STATFJORD(CROSS BORDER)`/EQUINOR, both
   starting 2030-05-01; `MURLACH [pt of MARNOCK-SKUA]`/BP and `MURLACH [pt of MARNOCK-SKUA]`/NEO
   ENERGY, both starting 2050-01-04). Each is the only equity row (or, for MURLACH, one of only two
@@ -1057,9 +1098,12 @@ Implementation rules:
 
 ### 15.4 Validation rules — all build-breaking
 
-**Status: rules below are PENDING correction, not settled (v2.4).** E7 as originally worded
-cannot ship: 838 live rows violate it. Corrected proposals follow the table; do not implement the
-table's E1/E4/E5/E7 wording literally.
+**Status: E1, E4, E5, E7 and E8 corrections below are APPROVED and implemented for the
+latest-period checkpoint (v2.5)**, in `etl/equity_join.py`'s `check_e1`/`check_e4`/`check_e5`/
+`check_e7`/`check_e8`. E2, E3, E6 and E9 are unaffected and remain as originally worded, not yet
+implemented (no code exists for them yet — they were out of scope for this checkpoint). The
+table's original E1/E4/E5/E7 wording is superseded by the corrections below; do not implement the
+table literally.
 
 Implement in `etl/validate_equity.py`. Any failure exits non-zero and writes no artifacts.
 
@@ -1078,23 +1122,45 @@ Implement in `etl/validate_equity.py`. Any failure exits non-zero and writes no 
 E1 and E8 are the load-bearing checks. E1 catches parse and interval errors at source; E8 catches
 them at the aggregate. Both must pass.
 
-**Corrected proposals (2026-09-09 diagnostic investigation — pending implementation):**
+**Corrected rules, approved and implemented for the latest-period checkpoint (v2.5):**
 
-- **E1**: unchanged in intent (sum to 100% ±0.5pp for a field-month with production > 0), but
-  must not fail solely because a field's only equity row(s) are future-dated — that is E5/E6's
-  concern (coverage), not E1's (correctness of whatever interest *is* active).
-- **E2, E3, E6, E8, E9**: no changes proposed; not implicated by this investigation.
-- **E4**: keep the rule, scoped to same-(field, company) overlaps. Confirmed necessary, not just
-  theoretical — the live `ROCHELLE` case is a real violation this rule must catch.
-- **E5**: must not fire on a field whose only equity row(s) have a future `start_date` (the 3
-  cases above) — that gap is real and explained. Should distinguish "no equity row covers this
-  month yet, and none is expected to until a known future date" from "a gap that indicates a
-  parsing or matching failure."
-- **E7**: **cannot remain `start_date < end_date` (strict) on every row** — 838 live rows violate
-  it. Corrected: accept `start_date <= end_date`; treat `start_date == end_date` rows as
-  **non-interest-bearing event records**, not errors — they are inert under the half-open
-  containment test by construction and must never fail the build for that reason alone. A strict
-  `start_date < end_date` check should apply only to non-zero-duration rows.
+- **E1** (interest conservation): sum to 100% ±0.5pp, for every matched field with at least one
+  currently-effective ownership interval. Does not fail solely because a field's only equity
+  row(s) are future-dated (that is E5's concern), and quarantined field-months are excluded from
+  the pass/fail count and reported separately by E4, never counted as passing. Latest-period
+  result (202606): 249 fields pass, 0 fail.
+- **E2, E3, E6, E9**: no changes proposed; not implicated by this investigation, and not yet
+  implemented (no code exists for them — out of scope for this checkpoint).
+- **E4** (overlap validation): detects overlapping positive-interest intervals for the same
+  (field, company), and separately detects a field-month total exceeding 100% even when the
+  conflicting rows belong to different companies. Never auto-resolves — every violation is
+  quarantined and reported by name with its conflicting companies and source intervals. Confirmed
+  necessary, not just theoretical: the live `ROCHELLE` case is a real violation of exactly this
+  kind. Latest-period result: 0 quarantined field-months (ROCHELLE's overlap is historical,
+  2011-08, and does not recur in 202606) — verified live and by a committed regression fixture
+  reproducing the ROCHELLE case exactly (`tests/test_equity_join.py::test_rochelle_style_quarantine`).
+- **E5** (coverage validation): a producing latest-period field must resolve to an active
+  ownership set unless field matching is unresolved (`unmatched`), the source contains only
+  future-dated ownership (`future_only`), or the field-month is quarantined due to a source
+  anomaly (`quarantined`) — each category reported separately, never collapsed into one generic
+  "missing equity" count. Latest-period result: 249 resolved, 0 unmatched, 1 future_only
+  (`MURLACH [pt of MARNOCK-SKUA]`), 0 quarantined, 0 unresolved_gap.
+- **E7** (interval validity): `start_date <= end_date` on every row (not the original strict `<`)
+  — 838 live rows have `start_date == end_date` and are accepted as source event records, never
+  active ownership intervals, never a build failure for that reason. `start_date > end_date`
+  remains build-breaking (0 such rows found in the live workbook — verified over all 7,683 rows,
+  not scoped to the latest period, since this is a structural data-integrity property of the
+  source).
+- **E8** (production conservation): computed per stream (oil, dry gas, associated gas,
+  condensate) separately — never combined. Compares `sum(equity-attributable production)` against
+  `sum(field production)` **only for fully-resolved fields**; explicitly reports total production,
+  production included in the test, production excluded due to unresolved coverage, and the
+  resulting `coverage_pct`, rather than silently comparing against quarantined/unresolved
+  production. Latest-period result: dry gas and condensate at 100.0% coverage; associated gas at
+  99.458%; oil at 96.928% (the shortfall in both is `MURLACH`'s real 202606 production, excluded
+  because its equity is future-only — see `etl/equity_latest_period_join_report.md` for the full
+  breakdown). None of the four streams is claimed at 100% coverage where matching or interval
+  resolution is incomplete.
 
 **Zero-interest rows are confirmed to exist and their intended exclusion is confirmed correct, not
 merely proposed.** 241 rows have `interest_pct == 0` (218 of them also have `Operator Flag = 'Y'`).
