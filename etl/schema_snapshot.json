@@ -499,5 +499,103 @@
         ]
       }
     ]
+  },
+  "grain_investigation_full_history": {
+    "where": "1=1",
+    "distinct_field_unit_pair_count": 557,
+    "distinct_unittypdes": [
+      "Dry Gas Field",
+      "Offshore Tanker Loader",
+      "Oil Field Exporting to Pipeline",
+      "Onshore Oil Field"
+    ],
+    "multi_unit_field_count": 5,
+    "multi_unit_fields": [
+      {
+        "field": "COLUMBA B/D",
+        "units": [
+          {
+            "unit": "COLUMBA B",
+            "min_period": "199608",
+            "max_period": "200006",
+            "row_count": 45
+          },
+          {
+            "unit": "COLUMBA BD",
+            "min_period": "200007",
+            "max_period": "202506",
+            "row_count": 300
+          }
+        ]
+      },
+      {
+        "field": "HATFIELD",
+        "units": [
+          {
+            "unit": "HATFIELD MOOR GAS STORAGE INJECTION",
+            "min_period": "200106",
+            "max_period": "202605",
+            "row_count": 176
+          },
+          {
+            "unit": "HATFIELD MOORS",
+            "min_period": "198711",
+            "max_period": "202605",
+            "row_count": 335
+          }
+        ]
+      },
+      {
+        "field": "HUMBLY GROVE",
+        "units": [
+          {
+            "unit": "HUMBLY GROVE",
+            "min_period": "200511",
+            "max_period": "202605",
+            "row_count": 246
+          },
+          {
+            "unit": "HUMBLY GROVE GAS STORAGE",
+            "min_period": "200511",
+            "max_period": "202605",
+            "row_count": 247
+          }
+        ]
+      },
+      {
+        "field": "NORTH SEAN",
+        "units": [
+          {
+            "unit": "NORTH SEAN",
+            "min_period": "201705",
+            "max_period": "202407",
+            "row_count": 87
+          },
+          {
+            "unit": "SEAN",
+            "min_period": "198906",
+            "max_period": "201704",
+            "row_count": 332
+          }
+        ]
+      },
+      {
+        "field": "ROUGH",
+        "units": [
+          {
+            "unit": "ROUGH PRODUCTION",
+            "min_period": "198304",
+            "max_period": "202606",
+            "row_count": 500
+          },
+          {
+            "unit": "ROUGH STORAGE",
+            "min_period": "200001",
+            "max_period": "202606",
+            "row_count": 263
+          }
+        ]
+      }
+    ]
   }
 }

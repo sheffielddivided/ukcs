@@ -165,6 +165,51 @@ def find_latest_period(layer_url: str, period_field: str) -> str | int:
     return latest
 
 
+def _grouped_query_all(layer_url: str, where: str, group_fields: str, extra_stats: list) -> list[dict]:
+    """Run a groupBy/outStatistics query, paginating on resultOffset if
+    exceededTransferLimit is set. Unlike a plain attribute query, ArcGIS
+    groupBy pagination behaviour is not guaranteed by supportsPagination
+    (which this layer reports as null), so this is defensive rather than
+    assumed-safe."""
+    stats = [
+        {
+            "statisticType": "count",
+            "onStatisticField": "OBJECTID",
+            "outStatisticFieldName": "row_count",
+        },
+        *extra_stats,
+    ]
+    page_size = 2000
+    offset = 0
+    rows: list[dict] = []
+    while True:
+        result = query(
+            layer_url,
+            {
+                "where": where,
+                "groupByFieldsForStatistics": group_fields,
+                "outStatistics": json.dumps(stats),
+                "orderByFields": group_fields,
+                "resultOffset": offset,
+                "resultRecordCount": page_size,
+            },
+        )
+        page = [f["attributes"] for f in result.get("features", [])]
+        rows.extend(page)
+        exceeded = result.get("exceededTransferLimit", False)
+        if len(page) < page_size and not exceeded:
+            break
+        if not page:
+            break
+        offset += page_size
+        if offset > 200_000:
+            raise DiscoveryError(
+                "Grouped query pagination exceeded 200,000 rows without "
+                "terminating - aborting rather than looping indefinitely."
+            )
+    return rows
+
+
 def grain_investigation(layer_url: str, meta: dict, period_field: str, latest_period) -> dict:
     """Section 7.1: for the latest period, groupBy FIELDNAME, UNITNAME,
     UNITTYPDES and report field/unit cardinality."""
@@ -182,35 +227,11 @@ def grain_investigation(layer_url: str, meta: dict, period_field: str, latest_pe
     where = f"{period_field}='{latest_period}'" if is_string else f"{period_field}={latest_period}"
     print(f"where clause: {where}  (field type: {field_type})")
 
-    group_fields = "FIELDNAME,UNITNAME,UNITTYPDES"
-    stats = [
-        {
-            "statisticType": "count",
-            "onStatisticField": "OBJECTID",
-            "outStatisticFieldName": "row_count",
-        }
-    ]
-    result = query(
-        layer_url,
-        {
-            "where": where,
-            "groupByFieldsForStatistics": group_fields,
-            "outStatistics": json.dumps(stats),
-            "orderByFields": group_fields,
-        },
-    )
-    if result.get("exceededTransferLimit"):
-        raise DiscoveryError(
-            "groupBy query for the grain investigation hit "
-            "exceededTransferLimit - this script does not paginate grouped "
-            "queries; results below would be incomplete and must not be trusted."
-        )
-
-    rows = [f["attributes"] for f in result.get("features", [])]
+    rows = _grouped_query_all(layer_url, where, "FIELDNAME,UNITNAME,UNITTYPDES", [])
     if not rows:
         raise DiscoveryError(
             f"Grain investigation groupBy query returned zero rows for "
-            f"where={where!r}. Raw response: {result}"
+            f"where={where!r}."
         )
 
     distinct_fields = sorted({r.get("FIELDNAME") for r in rows})
@@ -241,6 +262,77 @@ def grain_investigation(layer_url: str, meta: dict, period_field: str, latest_pe
     }
 
 
+def grain_investigation_full_history(layer_url: str) -> dict:
+    """Re-run the section 7.1 groupBy across the FULL period range, not just
+    the latest period. A single-period snapshot cannot rule out historical
+    unitisation splits or reporting-structure changes."""
+    print("\n--- Grain investigation over FULL HISTORY ---")
+
+    where = "1=1"
+    rows = _grouped_query_all(layer_url, where, "FIELDNAME,UNITNAME,UNITTYPDES", [])
+    if not rows:
+        raise DiscoveryError("Full-history groupBy query returned zero rows.")
+
+    distinct_pairs = sorted({(r.get("FIELDNAME"), r.get("UNITNAME")) for r in rows})
+    distinct_unittypdes = sorted({r.get("UNITTYPDES") for r in rows})
+
+    units_per_field: dict[str, set] = {}
+    for r in rows:
+        units_per_field.setdefault(r.get("FIELDNAME"), set()).add(r.get("UNITNAME"))
+    multi_unit_fields = sorted(
+        (name, sorted(units)) for name, units in units_per_field.items() if len(units) > 1
+    )
+
+    print(f"distinct (FIELDNAME, UNITNAME) pairs, all history: {len(distinct_pairs)}")
+    print(f"distinct UNITTYPDES values, all history ({len(distinct_unittypdes)}):")
+    for t in distinct_unittypdes:
+        print(f"  - {t}")
+    print(f"\nfields with >1 reporting unit, all history: {len(multi_unit_fields)}")
+
+    multi_unit_detail = []
+    for name, units in multi_unit_fields:
+        print(f"\n  {name}: units = {units}")
+        unit_ranges = []
+        for unit in units:
+            unit_where = f"FIELDNAME='{name}' AND UNITNAME='{unit}'"
+            stats = [
+                {"statisticType": "min", "onStatisticField": "PERIODYRMN", "outStatisticFieldName": "min_period"},
+                {"statisticType": "max", "onStatisticField": "PERIODYRMN", "outStatisticFieldName": "max_period"},
+                {"statisticType": "count", "onStatisticField": "OBJECTID", "outStatisticFieldName": "row_count"},
+            ]
+            result = query(
+                layer_url,
+                {"where": unit_where, "outStatistics": json.dumps(stats)},
+            )
+            feats = result.get("features", [])
+            if not feats:
+                raise DiscoveryError(
+                    f"Min/max period query returned no rows for {unit_where!r}."
+                )
+            attrs = feats[0]["attributes"]
+            print(
+                f"      {unit}: {attrs.get('min_period')}..{attrs.get('max_period')} "
+                f"({attrs.get('row_count')} rows)"
+            )
+            unit_ranges.append(
+                {
+                    "unit": unit,
+                    "min_period": attrs.get("min_period"),
+                    "max_period": attrs.get("max_period"),
+                    "row_count": attrs.get("row_count"),
+                }
+            )
+        multi_unit_detail.append({"field": name, "units": unit_ranges})
+
+    return {
+        "where": where,
+        "distinct_field_unit_pair_count": len(distinct_pairs),
+        "distinct_unittypdes": distinct_unittypdes,
+        "multi_unit_field_count": len(multi_unit_fields),
+        "multi_unit_fields": multi_unit_detail,
+    }
+
+
 def main() -> int:
     try:
         points_service_url = resolve_service_url(ITEM_ID_POINTS, "PPRS points")
@@ -261,6 +353,7 @@ def main() -> int:
         grain_result = grain_investigation(
             layer_meta["_layer_url"], layer_meta, period_field, latest_period
         )
+        grain_result_full_history = grain_investigation_full_history(layer_meta["_layer_url"])
 
         polygons_service_url = resolve_service_url(ITEM_ID_POLYGONS, "PPRS polygons")
 
@@ -277,6 +370,7 @@ def main() -> int:
             "period_field": period_field,
             "latest_period": latest_period,
             "grain_investigation": grain_result,
+            "grain_investigation_full_history": grain_result_full_history,
         }
         SCHEMA_SNAPSHOT_PATH.write_text(json.dumps(snapshot, indent=2, default=str))
         print(f"\nSchema snapshot written to {SCHEMA_SNAPSHOT_PATH}")
