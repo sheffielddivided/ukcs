@@ -196,23 +196,27 @@ def query_all(
         offset += page_size
 
 
-def query_max_statistic(
+def query_statistic(
     layer_url: str,
     field: str,
+    statistic_type: str,
     *,
     where: str = "1=1",
     session: requests.Session | None = None,
 ) -> object:
-    """Single round-trip MAX query via outStatistics (spec section 3.3, in
-    place of the fragile returnDistinctValues+orderByFields+limit=1
-    approach, which depends on supportsDistinct/supportsPagination being
-    enabled - the live layer reports supportsPagination as null)."""
+    """Single round-trip statistic query via outStatistics (spec section
+    3.3, in place of the fragile returnDistinctValues+orderByFields+
+    limit=1 approach, which depends on supportsDistinct/supportsPagination
+    being enabled - the live layer reports supportsPagination as null).
+
+    statistic_type is any ArcGIS statisticType, e.g. "max", "min", "count".
+    """
     session = session or requests.Session()
     stats = [
         {
-            "statisticType": "max",
+            "statisticType": statistic_type,
             "onStatisticField": field,
-            "outStatisticFieldName": "max_value",
+            "outStatisticFieldName": "stat_value",
         }
     ]
     data = _request_json(
@@ -223,7 +227,18 @@ def query_max_statistic(
     features = data.get("features", [])
     if not features:
         raise ArcGISError(
-            f"outStatistics MAX query on {field!r} returned no features "
-            f"(where={where!r})."
+            f"outStatistics {statistic_type.upper()} query on {field!r} "
+            f"returned no features (where={where!r})."
         )
-    return features[0]["attributes"]["max_value"]
+    return features[0]["attributes"]["stat_value"]
+
+
+def query_max_statistic(
+    layer_url: str,
+    field: str,
+    *,
+    where: str = "1=1",
+    session: requests.Session | None = None,
+) -> object:
+    """Convenience wrapper for query_statistic(..., statistic_type='max')."""
+    return query_statistic(layer_url, field, "max", where=where, session=session)
