@@ -1600,6 +1600,140 @@ checkpoint.
 
 ---
 
+### 15.13 Equity frontend checkpoint (v2.9, 2026-09-09) — COMPANY EQUITY VIEW IMPLEMENTED
+
+Adds the user-facing frontend on top of the artifacts published in 15.12. No parent-company
+mapping, no legal-entity merging, no boe/d calculation, no change to the March 2013 publication
+start, the 95%/99.5% thresholds, or interval-resolution policy — none of those were touched, and
+none is described as implemented below.
+
+**New frontend modules** (`docs/app/`): `equity.js` (data loading — lazy, cached, same discipline as
+`state.js`: `meta.json`/`index.json` loaded once at startup, `companies/{slug}.json` and
+`fields/{slug}.json` fetched at most once each, only on selection, never preloaded in bulk);
+`equity-ui.js` (company equity panel, field ownership section, MURLACH note); `search.js` (global
+search index and keyboard-accessible combobox); `urlstate.js` (hash-based shareable state via
+`history.replaceState`). `charts.js` gained `renderEquityStreamChart` (one stream, one chart, one
+unit — never shares an axis with another stream). `main.js` and `docs/index.html`/`styles.css` were
+extended, not rewritten: the existing map/field/operator code paths are unchanged.
+
+**Equity is the default company metric.** On load, `#mode-equity` is pressed and the legal-entity
+selector is shown; operator production is a separate, explicitly-labelled toggle
+(`#mode-operator`), never sharing a chart series, axis, or total with the equity view, and
+retaining its existing retrospective-attribution caveat unchanged. Switching mode never carries a
+selection across — each mode's selector starts empty unless the URL names an entity for that mode.
+Legal-entity names are used and displayed exactly as recorded by NSTA (label:
+`"Legal entity as recorded by NSTA"`, never "parent company", "corporate group", or "ultimate
+owner"), listed in deterministic alphabetical order with no grouping or fuzzy reassignment.
+
+**Coverage-state display.** Every stream-month renders one of three states, read from the artifact
+(never hardcoded): `complete` (≥99.5%, value + coverage shown, icon `✓`), `warning` (≥95%, <99.5%,
+value shown plus a visible textual explanation naming the actual coverage % and that some producing
+field volumes were excluded because current equity interests could not be resolved), `unavailable`
+(<95%, rendered as "Not available" — never a numeric zero — and as a genuine gap in the chart line,
+via ECharts `connectNulls: false`). Status is communicated by icon + text together, never colour
+alone. Two streams in the same period can independently carry different statuses (verified in the
+committed tests using a synthetic month where oil/associated gas are `unavailable` while dry
+gas/condensate are `complete`, since no month in the live published data currently falls below 95%).
+
+**MURLACH.** Its excluded production affects coverage exactly as already encoded in the artifacts —
+nothing about the calculation changed. The frontend does not use `company.fields` to decide whether
+to show the MURLACH note (that list only ever contains RESOLVED field-months, and MURLACH's are
+always `future_only`, so it never appears there for any company, holders included). Instead
+`equity-ui.js`'s `isMurlachAffected()` fetches MURLACH's own `fields/{slug}.json` and checks whether
+the company's exact name appears in its `ownership_intervals` — a small, cached, purely data-driven
+lookup with no hardcoded company names. When affected, the panel shows the exact required text:
+*"Some recent production is excluded because NSTA records MURLACH production before the effective
+date of its available equity interests."*, labelled "Unresolved source-data case", linking to
+`methodology.html`. The frontend does not speculate about the 2050 effective date.
+
+**Field ownership.** The existing field panel gained a Production/Ownership tab pair;
+`fields/{slug}.json` is fetched only when the Ownership tab is opened. It shows legal entity,
+interest %, effective from/to (open-ended intervals show "Current", never a fabricated end date),
+operator flag (labelled explicitly as source metadata only, never implying equity), field-match
+method, and excluded/unresolved periods. Zero-interest rows (0% economic interest, a real dated
+interval) are shown but visually and textually distinguished (`.zero-interest-badge`). Zero-duration
+rows (`start_date === end_date` — source event records, not ownership periods) never render as
+ownership rows; they appear only inside a collapsed `<details>` block labelled "N source event
+record(s) (not ownership periods)".
+
+**Search and URL state.** A single global search box covers fields, equity legal entities, and
+current operators (closing the Phase 1 closeout note that field search was unfinished),
+deterministic case-insensitive substring matching only, each result explicitly typed (Field / Legal
+entity / Operator), full keyboard operation (ArrowUp/Down/Enter/Escape, ARIA
+combobox/listbox/activedescendant). Selected field/entity/operator, metric mode, and stream are
+encoded in `location.hash` via `history.replaceState` (no full reload on ordinary interaction, no
+internal file paths in the URL, `/ukcs/` subpath-safe since `location.pathname` is never touched).
+An invalid or stale slug in the URL shows a specific, named error in the existing status banner and
+leaves the rest of the site usable — it never crashes silently or guesses.
+
+**Error isolation.** The equity startup fetch (`meta.json` + `index.json`) is wrapped in its own
+try/catch in `main.js`, separate from the production-map startup fetch: a failure there surfaces in
+a dedicated `#equity-status-banner`, and the map, field search, and operator view all remain fully
+usable. Company-file, field-file, and malformed-JSON failures are each caught and shown with their
+real failure category (`DataLoadError` distinguishes network/HTTP/parse failures, matching
+`state.js`'s existing discipline) — never a guessed message, never a silent fallback to zero.
+
+**Tests.** `tests/frontend/` is a new, committed, CI-compatible pytest + Playwright suite (31 tests,
+its own GitHub Actions workflow, `.github/workflows/frontend-tests.yml`, confirmed green on a real
+run, not just locally) that runs the real `docs/app/*.js` modules against small synthetic fixtures
+under `tests/frontend/fixtures/` — including a deliberately synthetic below-95%-coverage month, since
+the live published data currently has none, so the `unavailable` path would otherwise be untestable.
+maplibre-gl and echarts are replaced with small hand-written stub files (no live CDN fetch, no
+sandbox-only cached bytes); the suite asserts zero requests to any NSTA/ArcGIS/blob-storage host on
+every interaction path. Coverage includes: lazy-loading (no startup preload of company/field files),
+distinct legal entities, equity-as-default metric, mode/caveat separation, all three coverage
+statuses including same-month divergence across streams, the MURLACH note (both presence for a real
+recorded holder and, separately, absence for a company with no recorded interest — proving it's
+data-driven, not unconditional), methodology linking, typed search results, URL-state round-trip and
+invalid-slug handling, keyboard search operation, six distinct fetch-failure categories (equity meta,
+equity index, missing company file, missing field file, malformed JSON — each isolated from the rest
+of the site), and deterministic re-rendering. `tests/test_*.py` (the existing 159 ETL tests) are
+unaffected and still pass; `build-data.yml`'s test step now excludes `tests/frontend` (different
+dependencies — Playwright/Chromium — and a different concern) rather than importing it and failing.
+
+**Performance** (measured locally: `docs/` served over plain HTTP, MapLibre/ECharts/OSM-tile bytes
+served from cached copies of the real CDN responses via request interception, since this sandbox
+cannot sustain direct outbound HTTPS to arbitrary hosts — **not a substitute for a real GitHub Pages
+CDN measurement**, which this checkpoint could not perform: doing so would require deploying to
+`main`, which was not authorized during this checkpoint; see Deviations below):
+`domContentLoaded` ≈ 324 ms, `load` ≈ 326 ms, 41 requests and ≈1.81 MB transferred by the time
+startup settles (real production `fields.geojson`/`history/index.json` plus the full MapLibre
+bundle and OSM tiles for the initial view — `equity/index.json` alone is 113 KB, `equity/meta.json`
+1.3 KB), and 332 ms from filling the equity company selector to the panel's data table being
+present in the DOM (includes the company-file fetch, the MURLACH-interval check fetch, and ECharts'
+first render). All comfortably under the existing 3-second cold-cache reference from Phase 1,
+though that reference and this measurement are not directly comparable (different network
+conditions) — see Deviations.
+
+**Deviations from full compliance with this checkpoint's instructions, reported explicitly:**
+
+- **No live GitHub Pages verification was performed.** The standing branch policy prohibits pushing
+  to any branch other than `claude/ukcs-equity-production-tyjna2`, and merging to `main` — required
+  for an actual GitHub Pages deployment — was not authorized during this checkpoint. Verification was
+  instead done via a real browser (Playwright/Chromium), real static file serving, and cached real
+  CDN response bytes with zero mocking of application logic — the strongest available substitute
+  short of a live deployment, but not the live deployment itself. Live GitHub Pages verification
+  (equity selector, panel loading, operator/field views, ownership lazy-load, MURLACH warning,
+  coverage display, methodology link, URL-state sharing, console/network cleanliness, cold-cache
+  performance) remains outstanding and needs either explicit authorization to merge, or a separate
+  Pages-preview mechanism this project does not currently have.
+- Performance figures above are from local static serving with cached CDN bytes, not a live CDN —
+  reported as an approximation, not a substitute for the required live measurement.
+
+**Not done, deliberately, matching this checkpoint's constraints:** no parent-company mapping or
+legal-entity merging was added; no boe/d figure was added to the equity view (the existing map-only
+boe/d sizing convention is untouched); the March 2013 publication start and the 95%/99.5%
+thresholds are unchanged; no new external data source was added; interval-resolution policy is
+unchanged.
+
+**Status: the company equity view, coverage display, field ownership detail, methodology linking,
+global search, and URL state all work and are covered by a real, CI-green test suite.** Live GitHub
+Pages verification is the one explicitly outstanding item, for the branch-policy reason stated
+above — not a defect in the implementation, but a deployment-authorization gap this checkpoint could
+not close on its own.
+
+---
+
 ## 16. Phase 3 — deferred
 
 Field determination polygons and zoom-dependent point-to-polygon switching; wells; infrastructure
