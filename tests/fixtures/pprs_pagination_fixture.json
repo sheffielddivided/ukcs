@@ -1,0 +1,27 @@
+{
+  "page_size": 3,
+  "pages": [
+    {
+      "exceededTransferLimit": true,
+      "features": [
+        {"attributes": {"OBJECTID": 1, "FIELDNAME": "BUZZARD", "PERIODYRMN": "202601"}},
+        {"attributes": {"OBJECTID": 2, "FIELDNAME": "BUZZARD", "PERIODYRMN": "202602"}},
+        {"attributes": {"OBJECTID": 3, "FIELDNAME": "BUZZARD", "PERIODYRMN": "202603"}}
+      ]
+    },
+    {
+      "exceededTransferLimit": true,
+      "features": [
+        {"attributes": {"OBJECTID": 4, "FIELDNAME": "FORTIES", "PERIODYRMN": "202601"}},
+        {"attributes": {"OBJECTID": 5, "FIELDNAME": "FORTIES", "PERIODYRMN": "202602"}},
+        {"attributes": {"OBJECTID": 6, "FIELDNAME": "FORTIES", "PERIODYRMN": "202603"}}
+      ]
+    },
+    {
+      "exceededTransferLimit": false,
+      "features": [
+        {"attributes": {"OBJECTID": 7, "FIELDNAME": "ROUGH", "PERIODYRMN": "202601"}}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+-r ../etl/requirements.txt
+pytest==8.3.5
