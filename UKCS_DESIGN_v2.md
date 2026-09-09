@@ -597,8 +597,10 @@ UKCS bounding box of roughly lon −14 to 5, lat 48 to 63, and fail the build ot
   "slug": "buzzard",
   "field": "BUZZARD",
   "operator": "...",
-  "units": [{ "name": "...", "type": "...", "classification": "production" }],
-  "storage_units": [{ "name": "...", "type": "..." }],
+  "region": "...",
+  "location": "...",
+  "units": [{ "name": "...", "type": "...", "first_period": "200207", "last_period": "202606" }],
+  "storage_units": [{ "name": "...", "type": "...", "first_period": "...", "last_period": "..." }],
   "series": [
     { "period": "202001", "oil_mbd": 0.0, "dry_gas_mmscfd": 0.0,
       "assoc_gas_mmscfd": 0.0, "condensate_mbd": 0.0, "water_mbd": 0.0 }
@@ -606,9 +608,36 @@ UKCS bounding box of roughly lon −14 to 5, lat 48 to 63, and fail the build ot
 }
 ```
 
-`units` lists the reporting units included in `series` (production only). `storage_units`, if
-any, lists units excluded from `series` per section 7.3, so the field panel can surface them
-separately without them ever contributing to the production numbers.
+`units` lists every historical reporting unit ever classified `production` for this field
+(section 7.3), each with the period range it was actually reporting under that name — not just
+its current unit name. Classification itself is implicit in which list a unit appears under
+(`units` vs `storage_units`); it is not repeated as a per-unit field since the two lists are
+already a partition. `storage_units` lists units excluded from `series` per section 7.3, with the
+same period-range shape, so the field panel can surface them separately without them ever
+contributing to the production numbers, in any period, not only the latest one.
+
+`operator`, `region` and `location` reflect the **most recent** production period on record, per
+the same "current, applied retrospectively" convention as section 6.1 — not an arbitrary
+historical value from early in the field's life.
+
+**The two rename cases** identified in section 7.2 (`SEAN` → `NORTH SEAN`, `COLUMBA B` →
+`COLUMBA BD`) are resolved as **one continuous series per field**, not two separate series. This
+requires no special-case code: NSTA already carries both the old and new unit names under a single
+`FIELDNAME`, and because the two unit names' periods never overlap, summing every production unit
+for a given `(FIELDNAME, period)` — the same rule that already handles ROUGH's concurrent
+production/storage split — naturally produces one unbroken series across the rename boundary. The
+alternative (two separate series, one per unit name) would fragment a single field's history for
+no operational reason and complicate every downstream consumer (search, equity matching in Phase
+2) for a purely administrative renaming. The discontinuity is not hidden, though: `units` lists
+both historical names with their own period ranges, so a reader can see the handover even though
+`series` itself has no gap or seam. Verified with a unit test asserting a continuous period
+sequence across the boundary (`tests/test_transform.py`).
+
+**Field universe.** The set of fields with a `history/{slug}.json` file is larger than
+`fields.geojson`'s 250 (latest-period-only) fields — full history covers every field that has
+*ever* produced since the earliest observed period (197506), 552 as of the September 2026 build.
+This is the field universe section 15.5's equity-matching tolerance must be measured against, not
+the latest-period 250.
 
 `history/index.json` maps slug → `{ field, operator, region, first_period, last_period }` and is
 the source for search and autocomplete.
@@ -707,7 +736,7 @@ Therefore:
    Verify the bounding-box assertion passes. Apply the production/storage classification from
    section 7.3.
 4. Minimal `docs/index.html` — map, markers, tooltips, operator filter. Deploy and confirm.
-5. Extend ETL to full history and per-field history files.
+5. Extend ETL to full history and per-field history files. — **Done, v2.2. See section 9.3.**
 6. Field panel and history charts.
 7. `operators.json` and the company view.
 8. `etl/validate.py` and the Actions workflow.

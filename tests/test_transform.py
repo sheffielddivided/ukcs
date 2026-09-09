@@ -14,11 +14,32 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from etl.transform import (  # noqa: E402
+    aggregate_history,
     aggregate_latest_period,
     build_fields_geojson,
+    build_history_artifacts,
     round3,
     slugify,
 )
+
+
+def _hrow(field, unit, period, oil=0.0, dgas=0.0, agas=0.0, cond=0.0, water=0.0):
+    """Attributes-only row (no geometry) for history aggregation tests."""
+    return {
+        "attributes": {
+            "FIELDNAME": field,
+            "UNITNAME": unit,
+            "FIELDAREA": "SNS",
+            "LOCATION": "Offshore",
+            "ORGGRPNM": "OPERATOR CO",
+            "PERIODYRMN": period,
+            "OILPRODMBD": oil,
+            "AGASPROMMS": agas,
+            "DGASPROMMS": dgas,
+            "GCONDMBD": cond,
+            "WATPRODMBD": water,
+        }
+    }
 
 
 def _row(field, unit, lon, lat, oil=0.0, dgas=0.0, agas=0.0, cond=0.0, water=0.0):
@@ -132,3 +153,108 @@ def test_build_fields_geojson_sorted_by_slug():
     slugs = [f["properties"]["slug"] for f in geojson["features"]]
     assert slugs == sorted(slugs)
     assert slugs == ["alpha", "zulu"]
+
+
+# --- aggregate_history (spec section 9.3 / 13 step 5) ---
+
+
+def test_history_rough_storage_excluded_from_every_period_not_just_latest():
+    """The double-counting risk section 7.3 exists for is exactly this:
+    a storage unit reporting nonzero volumes in an EARLIER period, not
+    just the latest one. Must be excluded throughout the series."""
+    rows = [
+        _hrow("ROUGH", "ROUGH PRODUCTION", "200001", dgas=10.0),
+        _hrow("ROUGH", "ROUGH STORAGE", "200001", dgas=999.0),
+        _hrow("ROUGH", "ROUGH PRODUCTION", "200002", dgas=12.0),
+        _hrow("ROUGH", "ROUGH STORAGE", "200002", dgas=888.0),
+    ]
+    classification_map = {("ROUGH", "ROUGH STORAGE"): "storage"}
+    histories, stats = aggregate_history(rows, classification_map)
+
+    assert len(histories) == 1
+    h = histories[0]
+    assert [s["period"] for s in h.series] == ["200001", "200002"]
+    assert [s["dry_gas_mmscfd"] for s in h.series] == [10.0, 12.0]
+    assert h.storage_units[0]["name"] == "ROUGH STORAGE"
+    assert stats["storage_row_count"] == 2
+    assert stats["production_row_count"] == 2
+
+
+def test_history_rename_case_produces_one_continuous_series():
+    """SEAN -> NORTH SEAN (spec section 7.2): both unit names share one
+    FIELDNAME and their periods never overlap, so the series must be
+    continuous across the boundary with no gap, while the unit list still
+    exposes both names and their date ranges (the discontinuity must be
+    visible, not smoothed over)."""
+    rows = [
+        _hrow("NORTH SEAN", "SEAN", "201703", dgas=5.0),
+        _hrow("NORTH SEAN", "SEAN", "201704", dgas=6.0),
+        _hrow("NORTH SEAN", "NORTH SEAN", "201705", dgas=7.0),
+        _hrow("NORTH SEAN", "NORTH SEAN", "201706", dgas=8.0),
+    ]
+    histories, _ = aggregate_history(rows, {})
+    assert len(histories) == 1
+    h = histories[0]
+    periods = [s["period"] for s in h.series]
+    assert periods == ["201703", "201704", "201705", "201706"], (
+        "series must be continuous across the rename boundary, no gap or duplicate"
+    )
+    values = [s["dry_gas_mmscfd"] for s in h.series]
+    assert values == [5.0, 6.0, 7.0, 8.0]
+    unit_names = {u["name"] for u in h.production_units}
+    assert unit_names == {"SEAN", "NORTH SEAN"}
+    sean_unit = next(u for u in h.production_units if u["name"] == "SEAN")
+    north_sean_unit = next(u for u in h.production_units if u["name"] == "NORTH SEAN")
+    assert sean_unit["last_period"] == "201704"
+    assert north_sean_unit["first_period"] == "201705"
+
+
+def test_history_storage_only_field_excluded_entirely():
+    rows = [_hrow("PURE_STORE", "PURE STORE UNIT", "200001", dgas=5.0)]
+    classification_map = {("PURE_STORE", "PURE STORE UNIT"): "storage"}
+    histories, stats = aggregate_history(rows, classification_map)
+    assert histories == []
+    assert stats["storage_only_field_count"] == 1
+    assert stats["storage_only_fields"] == ["PURE_STORE"]
+
+
+def test_history_operator_region_taken_from_most_recent_period():
+    """Section 6.1's 'current operator of record' convention applied to
+    history: metadata should reflect the most recent production period,
+    not an arbitrary historical one."""
+    rows = [
+        {
+            "attributes": {
+                "FIELDNAME": "BUZZARD", "UNITNAME": "BUZZARD",
+                "FIELDAREA": "OLD REGION", "LOCATION": "Offshore",
+                "ORGGRPNM": "OLD OPERATOR", "PERIODYRMN": "200001",
+                "OILPRODMBD": 1.0, "AGASPROMMS": 0.0, "DGASPROMMS": 0.0,
+                "GCONDMBD": 0.0, "WATPRODMBD": 0.0,
+            }
+        },
+        {
+            "attributes": {
+                "FIELDNAME": "BUZZARD", "UNITNAME": "BUZZARD",
+                "FIELDAREA": "NEW REGION", "LOCATION": "Offshore",
+                "ORGGRPNM": "NEW OPERATOR", "PERIODYRMN": "200606",
+                "OILPRODMBD": 2.0, "AGASPROMMS": 0.0, "DGASPROMMS": 0.0,
+                "GCONDMBD": 0.0, "WATPRODMBD": 0.0,
+            }
+        },
+    ]
+    histories, _ = aggregate_history(rows, {})
+    h = histories[0]
+    assert h.operator == "NEW OPERATOR"
+    assert h.region == "NEW REGION"
+
+
+def test_build_history_artifacts_index_first_last_period():
+    rows = [
+        _hrow("BUZZARD", "BUZZARD", "200001", oil=1.0),
+        _hrow("BUZZARD", "BUZZARD", "200606", oil=2.0),
+    ]
+    histories, _ = aggregate_history(rows, {})
+    per_slug, index = build_history_artifacts(histories)
+    assert index["buzzard"]["first_period"] == "200001"
+    assert index["buzzard"]["last_period"] == "200606"
+    assert per_slug["buzzard"]["series"][0]["period"] == "200001"

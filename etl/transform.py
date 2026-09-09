@@ -243,6 +243,192 @@ def aggregate_latest_period(
     return records, stats
 
 
+@dataclass
+class FieldHistory:
+    slug: str
+    field: str
+    region: str | None
+    location: str | None
+    operator: str | None
+    series: list[dict] = dataclass_field(default_factory=list)
+    production_units: list[dict] = dataclass_field(default_factory=list)
+    storage_units: list[dict] = dataclass_field(default_factory=list)
+
+
+def aggregate_history(
+    rows: list[dict], classification_map: dict[tuple[str, str], str]
+) -> tuple[list[FieldHistory], dict]:
+    """Aggregate the full PPRS attribute history to (field, period) grain
+    (spec section 9.3 / 13 step 5).
+
+    Grain and exclusion rules are identical to aggregate_latest_period
+    (section 7.4/7.3), just applied across every observed period instead
+    of one: storage-classified units are excluded from every period's
+    totals, never only the latest one - Rough's history must not contain
+    ROUGH STORAGE's redelivery volumes in any period, not just not the
+    latest.
+
+    A period is included in a field's series only if that field had at
+    least one PRODUCTION row in that period. A field with no production
+    period at all (storage-only, at every point in its history) is
+    dropped entirely, same as in the latest-period aggregate, and counted
+    in stats rather than silently omitted.
+
+    The rename cases identified in spec section 7.2 (SEAN -> NORTH SEAN,
+    COLUMBA B -> COLUMBA BD) require no special handling here: NSTA
+    already carries both old and new unit names under one FIELDNAME, and
+    because their periods never overlap, summing every production unit
+    for a given (FIELDNAME, period) naturally yields one continuous
+    series with no double-counting - this is the same mechanism that
+    handles ROUGH's concurrent production+storage split, just with
+    non-overlapping unit lifetimes instead of concurrent ones. The
+    rename itself is still surfaced explicitly: `production_units`
+    lists every historical unit name with its first/last period, so a
+    reader can see the handover from the unit list even though the
+    series itself is unbroken.
+
+    Returns (field_histories, stats) where stats has:
+      raw_field_count, field_with_history_count, storage_only_field_count,
+      production_row_count, storage_row_count, period_count (total
+      field-period series entries written)
+    """
+    by_field: dict[str, list[dict]] = {}
+    for row in rows:
+        attrs = row["attributes"]
+        by_field.setdefault(attrs["FIELDNAME"], []).append(row)
+
+    raw_field_count = len(by_field)
+    production_row_count = 0
+    storage_row_count = 0
+    storage_only_fields: list[str] = []
+    period_count = 0
+    histories: list[FieldHistory] = []
+
+    for field_name in sorted(by_field.keys()):
+        field_rows = by_field[field_name]
+        production_rows = []
+        storage_rows = []
+        for row in field_rows:
+            attrs = row["attributes"]
+            unit_class = classify(field_name, attrs["UNITNAME"], classification_map)
+            if unit_class == "storage":
+                storage_rows.append(row)
+            else:
+                production_rows.append(row)
+
+        production_row_count += len(production_rows)
+        storage_row_count += len(storage_rows)
+
+        if not production_rows:
+            storage_only_fields.append(field_name)
+            continue
+
+        by_period: dict[str, list[dict]] = {}
+        for row in production_rows:
+            by_period.setdefault(row["attributes"]["PERIODYRMN"], []).append(row)
+
+        series = []
+        for period in sorted(by_period.keys()):
+            period_rows = by_period[period]
+            totals = {out_key: 0.0 for out_key in VALUE_FIELD_MAP.values()}
+            for row in period_rows:
+                attrs = row["attributes"]
+                for src_key, out_key in VALUE_FIELD_MAP.items():
+                    value = attrs.get(src_key)
+                    if value is not None:
+                        totals[out_key] += value
+            series.append(
+                {
+                    "period": period,
+                    **{key: round3(val) for key, val in totals.items()},
+                }
+            )
+        period_count += len(series)
+
+        # "Current" region/location/operator per section 6.1's convention:
+        # taken from the most recent production period on record, not an
+        # arbitrary historical one.
+        latest_period_rows = by_period[max(by_period.keys())]
+        latest_attrs = latest_period_rows[0]["attributes"]
+
+        production_unit_periods: dict[str, dict] = {}
+        for row in production_rows:
+            attrs = row["attributes"]
+            name = attrs["UNITNAME"]
+            entry = production_unit_periods.setdefault(
+                name, {"name": name, "type": attrs.get("UNITTYPDES"),
+                       "first_period": attrs["PERIODYRMN"], "last_period": attrs["PERIODYRMN"]}
+            )
+            entry["first_period"] = min(entry["first_period"], attrs["PERIODYRMN"])
+            entry["last_period"] = max(entry["last_period"], attrs["PERIODYRMN"])
+
+        storage_unit_periods: dict[str, dict] = {}
+        for row in storage_rows:
+            attrs = row["attributes"]
+            name = attrs["UNITNAME"]
+            entry = storage_unit_periods.setdefault(
+                name, {"name": name, "type": attrs.get("UNITTYPDES"),
+                       "first_period": attrs["PERIODYRMN"], "last_period": attrs["PERIODYRMN"]}
+            )
+            entry["first_period"] = min(entry["first_period"], attrs["PERIODYRMN"])
+            entry["last_period"] = max(entry["last_period"], attrs["PERIODYRMN"])
+
+        histories.append(
+            FieldHistory(
+                slug=slugify(field_name),
+                field=field_name,
+                region=latest_attrs.get("FIELDAREA"),
+                location=latest_attrs.get("LOCATION"),
+                operator=latest_attrs.get("ORGGRPNM"),
+                series=series,
+                production_units=sorted(
+                    production_unit_periods.values(), key=lambda u: u["first_period"]
+                ),
+                storage_units=sorted(
+                    storage_unit_periods.values(), key=lambda u: u["first_period"]
+                ),
+            )
+        )
+
+    stats = {
+        "raw_field_count": raw_field_count,
+        "field_with_history_count": len(histories),
+        "storage_only_field_count": len(storage_only_fields),
+        "storage_only_fields": sorted(storage_only_fields),
+        "production_row_count": production_row_count,
+        "storage_row_count": storage_row_count,
+        "period_count": period_count,
+    }
+    return histories, stats
+
+
+def build_history_artifacts(histories: list[FieldHistory]) -> tuple[dict, dict]:
+    """Build history/{slug}.json contents (one per field) and the
+    history/index.json summary (spec 9.3). Returns
+    (per_slug_documents, index_document)."""
+    per_slug = {}
+    index = {}
+    for h in sorted(histories, key=lambda h: h.slug):
+        per_slug[h.slug] = {
+            "slug": h.slug,
+            "field": h.field,
+            "operator": h.operator,
+            "region": h.region,
+            "location": h.location,
+            "units": h.production_units,
+            "storage_units": h.storage_units,
+            "series": h.series,
+        }
+        index[h.slug] = {
+            "field": h.field,
+            "operator": h.operator,
+            "region": h.region,
+            "first_period": h.series[0]["period"],
+            "last_period": h.series[-1]["period"],
+        }
+    return per_slug, index
+
+
 def build_fields_geojson(records: list[FieldRecord]) -> dict:
     """Build the fields.geojson FeatureCollection (spec 9.2). Features are
     sorted by slug for deterministic output."""

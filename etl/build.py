@@ -1,11 +1,11 @@
 """
-ETL entry point (spec section 8 / 13 step 3).
+ETL entry point (spec section 8 / 13 steps 3 and 5).
 
-This step: resolve the PPRS points service, validate its schema, fetch the
-latest period (with geometry), classify reporting units, aggregate to field
-grain, validate, and write meta.json + fields.geojson. Full history
-(history/*.json, operators.json) is a later step per the section 13 build
-order.
+Resolves the PPRS points service, validates its schema, fetches the latest
+period (with geometry) and the full attribute history (no geometry),
+classifies reporting units, aggregates to field grain, validates, and
+writes meta.json, fields.geojson, and history/*.json. operators.json is a
+later step per the section 13 build order.
 
 Usage: python etl/build.py
 Exit code is non-zero on any validation failure; on failure, docs/data/ is
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,8 +37,10 @@ from arcgis import (  # noqa: E402
     resolve_service_url,
 )
 from transform import (  # noqa: E402
+    aggregate_history,
     aggregate_latest_period,
     build_fields_geojson,
+    build_history_artifacts,
     load_unit_classification,
 )
 from validate import (  # noqa: E402
@@ -110,6 +113,10 @@ def load_previous_meta() -> dict | None:
         ) from e
 
 
+def _json_text(data: object) -> str:
+    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
+
+
 def write_json_atomic(path: Path, data: object) -> None:
     """Serialise with sorted keys and fixed separators so a rebuild of
     unchanged input produces a byte-identical file (spec: 'deterministic
@@ -117,9 +124,30 @@ def write_json_atomic(path: Path, data: object) -> None:
     mid-write can never leave a partial artifact in place (spec 8.3 /
     'atomic writes')."""
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    text = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    tmp_path.write_text(text + "\n", encoding="utf-8")
+    tmp_path.write_text(_json_text(data), encoding="utf-8")
     tmp_path.replace(path)
+
+
+def write_history_dir_atomic(history_dir: Path, per_slug: dict, index: dict) -> None:
+    """Write every history/{slug}.json plus history/index.json to a
+    staging directory, then atomically swap it in for the real
+    history/ directory in one rename. This guarantees the directory as a
+    whole is never left half-old/half-new (spec 8.3/13 step 5:
+    'atomic writes' and 'no partial artifacts') - a per-file crash mid-way
+    through hundreds of files would otherwise be a much larger blast
+    radius than the single-file case in step 3."""
+    staging_dir = history_dir.with_name(history_dir.name + ".tmp")
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir)
+    staging_dir.mkdir(parents=True)
+
+    for slug, doc in per_slug.items():
+        (staging_dir / f"{slug}.json").write_text(_json_text(doc), encoding="utf-8")
+    (staging_dir / "index.json").write_text(_json_text(index), encoding="utf-8")
+
+    if history_dir.exists():
+        shutil.rmtree(history_dir)
+    staging_dir.rename(history_dir)
 
 
 def main() -> int:
@@ -208,6 +236,47 @@ def main() -> int:
 
         fields_geojson = build_fields_geojson(records)
 
+        # --- Full history (spec 13 step 5): attributes only, no geometry ---
+        history_independent_count = query_statistic(
+            layer_url, "OBJECTID", "count", where="1=1", session=session
+        )
+        history_rows = list(
+            query_all(
+                layer_url,
+                where="1=1",
+                out_fields=OUT_FIELDS,
+                return_geometry=False,
+                max_record_count=max_record_count,
+                session=session,
+            )
+        )
+        print(
+            f"Fetched {len(history_rows)} full-history rows "
+            f"(independent count: {history_independent_count})"
+        )
+        if len(history_rows) != history_independent_count:
+            raise BuildError(
+                f"Pagination mismatch on full-history fetch: fetched "
+                f"{len(history_rows)} rows via query_all but an independent "
+                f"outStatistics COUNT query returned {history_independent_count}."
+            )
+
+        validate_no_negative_values(history_rows)
+        validate_unit_classification_tripwire(history_rows, classification_map)
+
+        histories, history_stats = aggregate_history(history_rows, classification_map)
+        print(f"History aggregation stats: {history_stats}")
+
+        if history_stats["storage_only_field_count"]:
+            notes.append(
+                f"{history_stats['storage_only_field_count']} field(s) in the "
+                "full history had only storage reporting units at every "
+                "observed period and were excluded entirely from history/: "
+                f"{history_stats['storage_only_fields']}"
+            )
+
+        history_per_slug, history_index = build_history_artifacts(histories)
+
         previous_meta = load_previous_meta()
         delta_notes = check_against_previous_build(
             previous_meta,
@@ -236,6 +305,10 @@ def main() -> int:
             "storage_unit_count": agg_stats["storage_unit_count"],
             "company_count": None,
             "record_count": len(rows),
+            "history_record_count": len(history_rows),
+            "history_field_count": history_stats["field_with_history_count"],
+            "history_field_count_raw": history_stats["raw_field_count"],
+            "history_series_point_count": history_stats["period_count"],
             "schema_hash": schema_hash,
             "notes": notes,
         }
@@ -251,9 +324,11 @@ def main() -> int:
     DOCS_DATA_DIR.mkdir(parents=True, exist_ok=True)
     write_json_atomic(DOCS_DATA_DIR / "meta.json", meta)
     write_json_atomic(DOCS_DATA_DIR / "fields.geojson", fields_geojson)
+    write_history_dir_atomic(DOCS_DATA_DIR / "history", history_per_slug, history_index)
 
     print(f"\nWrote {DOCS_DATA_DIR / 'meta.json'}")
     print(f"Wrote {DOCS_DATA_DIR / 'fields.geojson'}")
+    print(f"Wrote {DOCS_DATA_DIR / 'history'}/ ({len(history_per_slug)} field files + index.json)")
     print(f"field_count={meta['field_count']} (raw distinct FIELDNAME: {meta['field_count_raw']})")
     return 0
 
