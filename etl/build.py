@@ -53,6 +53,24 @@ ITEM_ID_POINTS = "dd38204275a04618ab7ddd00f87224e3"
 DATASET_NAME = "UKCS hydrocarbon field production reports PPRS points (WGS84)"
 PUBLISHER = "North Sea Transition Authority"
 
+# Standing provenance note (spec section 9.1, added v2.2): the summed
+# latest-period totals have not been checked against any NSTA-published
+# monthly aggregate figure. A web search at build-review time (September
+# 2026) found no such monthly figure to reconcile against - only annual/
+# multi-year trend figures (~1.09 million boe/d for 2024, projected ~1.0
+# million boe/d for 2025). This must be recorded in every build's
+# meta.json, not just reported once in a chat, so nobody downstream
+# mistakes silence for confirmation. Update this constant (and cite the
+# source) if a genuine per-period reconciliation source is added later.
+NSTA_RECONCILIATION_NOTE = (
+    "Latest-period oil and gas totals have NOT been reconciled against an "
+    "NSTA-published monthly aggregate production figure. No such "
+    "per-period figure was locatable at build-review time; only annual/ "
+    "multi-year trend figures are published. Treat these totals as "
+    "internally consistent (paginated, validated, deterministic) but not "
+    "independently verified against an NSTA total."
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS_DATA_DIR = REPO_ROOT / "docs" / "data"
 UNIT_CLASSIFICATION_PATH = REPO_ROOT / "etl" / "mappings" / "unit_classification.csv"
@@ -106,7 +124,7 @@ def write_json_atomic(path: Path, data: object) -> None:
 
 def main() -> int:
     session = requests.Session()
-    notes: list[str] = []
+    notes: list[str] = [NSTA_RECONCILIATION_NOTE]
 
     try:
         service_url = resolve_service_url(ITEM_ID_POINTS, session=session)

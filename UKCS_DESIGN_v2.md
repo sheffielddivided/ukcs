@@ -295,7 +295,8 @@ used in Phase 1 or Phase 2.
 | `WATPRODMBD` | Produced water, mb/d | |
 
 Confirmed reporting unit types (`UNITTYPDES`), observed across the **full period history**
-(197501–202606), not just the latest period:
+(197506–202606, per the live `MIN(PERIODYRMN)`/`MAX(PERIODYRMN)` statistic query - not 197501 as
+an earlier draft of this section assumed), not just the latest period:
 
 - `Dry Gas Field`
 - `Offshore Tanker Loader`
@@ -531,8 +532,9 @@ audience, an undocumented boe conversion is worse than no boe figure at all.
     }
   },
   "latest_period": "202606",
-  "earliest_period": "197501",
+  "earliest_period": "197506",
   "field_count": 0,
+  "field_count_raw": 0,
   "reporting_unit_count": 0,
   "storage_unit_count": 0,
   "company_count": 0,
@@ -545,7 +547,18 @@ audience, an undocumented boe conversion is worse than no boe figure at all.
 `schema_hash` is a hash of the sorted `(name, type)` field list. Changing it is how schema drift
 is detected on the next run. `storage_unit_count` is new in v2.2 — the count of reporting units
 classified `storage` per section 7.3, kept visible in `meta.json` so a change in that count (a new
-storage unit appearing) is auditable in the same place as everything else.
+storage unit appearing) is auditable in the same place as everything else. `field_count_raw` is
+also new in v2.2 — the distinct-`FIELDNAME` count before storage exclusion, so a difference
+between it and `field_count` is visible as an explained reduction (fields with production-unit
+data only) rather than looking like unexplained data loss.
+
+`notes` must always carry a standing entry stating whether the latest period's summed oil and gas
+totals have been reconciled against an NSTA-published aggregate figure for that period, and if
+not, that none was locatable. This is a build-time fact about provenance, not a one-off remark —
+it must survive in the committed artifact (and from there onto `methodology.html`), not live only
+in a build log or a chat transcript. If a reconciliation source is added later, this note changes
+to say so and names the source; until then it must say plainly that the total is unverified
+against NSTA, so nobody downstream mistakes silence for confirmation.
 
 ### 9.2 `fields.geojson`
 
