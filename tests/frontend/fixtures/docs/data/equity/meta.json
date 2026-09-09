@@ -1,0 +1,22 @@
+{
+  "built_at": "2026-01-01T00:00:00Z",
+  "earliest_published_period": "201303",
+  "last_modified": "Thu, 01 Jan 2026 00:00:00 GMT",
+  "latest_published_period": "202601",
+  "legal_entity_count": 2,
+  "matched_field_count": 1,
+  "methodology_version": "test-v1",
+  "minimum_coverage_pct": 95.0,
+  "murlach_unresolved": true,
+  "normalized_equity_row_count": 6,
+  "publication_start": "201303",
+  "resolved_workbook_url": "https://example.invalid/field_partners.xlsx",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000",
+  "source_item_title": "Field Partners",
+  "source_limitations": [
+    "Test fixture: synthetic source limitation note for offline frontend tests."
+  ],
+  "source_page_description": "Current and historical field equity shares (test fixture)",
+  "unmatched_field_count": 0,
+  "warning_coverage_pct": 99.5
+}

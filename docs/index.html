@@ -16,17 +16,47 @@
   <header>
     <h1>UKCS Oil &amp; Gas Production Explorer</h1>
     <span class="subtitle">North Sea Transition Authority open data &mdash; not an official NSTA product</span>
+    <a href="./methodology.html" class="header-methodology-link">Methodology</a>
   </header>
 
   <div id="status-banner" hidden></div>
+  <div id="equity-status-banner" hidden></div>
 
   <div id="layout">
     <aside id="sidebar">
-      <label for="operator-filter">Operator</label>
-      <select id="operator-filter">
-        <!-- populated from fields.geojson at load time -->
-      </select>
-      <button id="view-operator-history" type="button" disabled>View operator production history</button>
+      <div class="search-box">
+        <label for="global-search">Search fields, legal entities, operators</label>
+        <input
+          type="text"
+          id="global-search"
+          role="combobox"
+          aria-expanded="false"
+          aria-controls="global-search-results"
+          aria-autocomplete="list"
+          autocomplete="off"
+          placeholder="Search&hellip;"
+        />
+        <ul id="global-search-results" class="search-results" role="listbox" hidden></ul>
+      </div>
+
+      <div class="metric-mode-toggle" role="group" aria-label="Company production metric">
+        <button type="button" id="mode-equity" class="mode-button" aria-pressed="true">Equity-attributable production</button>
+        <button type="button" id="mode-operator" class="mode-button" aria-pressed="false">Operator production</button>
+      </div>
+
+      <div id="equity-mode-controls">
+        <label for="equity-company-input">Legal entity as recorded by NSTA</label>
+        <input type="text" id="equity-company-input" list="equity-company-list" placeholder="Type an entity name&hellip;" autocomplete="off" />
+        <datalist id="equity-company-list"><!-- populated from data/equity/index.json --></datalist>
+      </div>
+
+      <div id="operator-mode-controls">
+        <label for="operator-filter">Filter map by operator</label>
+        <select id="operator-filter">
+          <!-- populated from fields.geojson at load time -->
+        </select>
+        <button id="view-operator-history" type="button" disabled hidden>View operator production history</button>
+      </div>
 
       <div class="legend">
         <h2>Marker colour</h2>

@@ -1,0 +1,16 @@
+{
+  "generated_from": "current operator of record",
+  "operators": {
+    "example-operator-limited": {
+      "name": "EXAMPLE OPERATOR LIMITED",
+      "fields": ["alpha-field", "murlach-pt-of-marnock-skua"],
+      "first_period": "202511",
+      "last_period": "202601",
+      "series": [
+        { "period": "202511", "oil_mbd": 13.6, "condensate_mbd": 0.25, "assoc_gas_mmscfd": 1.5, "dry_gas_mmscfd": 6.1, "water_mbd": 2.4 },
+        { "period": "202512", "oil_mbd": 12.8, "condensate_mbd": 0.23, "assoc_gas_mmscfd": 1.4, "dry_gas_mmscfd": 5.8, "water_mbd": 2.3 },
+        { "period": "202601", "oil_mbd": 13.0, "condensate_mbd": 0.2, "assoc_gas_mmscfd": 1.5, "dry_gas_mmscfd": 5.5, "water_mbd": 2.3 }
+      ]
+    }
+  }
+}

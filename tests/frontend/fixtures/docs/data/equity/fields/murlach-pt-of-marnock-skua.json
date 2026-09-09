@@ -1,0 +1,30 @@
+{
+  "slug": "murlach-pt-of-marnock-skua",
+  "field_name": "MURLACH [pt of MARNOCK-SKUA]",
+  "equity_field_name": "MURLACH",
+  "field_match_method": "exact",
+  "excluded_periods": ["202511", "202512", "202601"],
+  "resolution_status_by_period": {
+    "202511": "future_only",
+    "202512": "future_only",
+    "202601": "future_only"
+  },
+  "ownership_intervals": [
+    {
+      "company_name": "ALPHA ENTITY LIMITED",
+      "interest_pct": 80,
+      "start_date": "205001",
+      "end_date": null,
+      "operator_flag": "Y",
+      "status": "future_only"
+    },
+    {
+      "company_name": "BETA ENTITY LIMITED",
+      "interest_pct": 20,
+      "start_date": "205001",
+      "end_date": null,
+      "operator_flag": "N",
+      "status": "future_only"
+    }
+  ]
+}

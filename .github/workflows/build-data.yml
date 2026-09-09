@@ -63,7 +63,13 @@ jobs:
         # docstrings) - this is fast and deterministic, never flaky on
         # live-service availability. A failing test stops the job here;
         # "Run build" below never executes against a red suite.
-        run: pytest tests/ -v
+        #
+        # tests/frontend is excluded here: it needs Playwright + a
+        # Chromium download (tests/frontend/requirements.txt), which this
+        # job's dependency install does not include, and it is a
+        # different concern (docs/app/*.js) from this ETL build. It runs
+        # in its own workflow, frontend-tests.yml.
+        run: pytest tests/ --ignore=tests/frontend -v
 
       - name: Run build
         run: python etl/build.py

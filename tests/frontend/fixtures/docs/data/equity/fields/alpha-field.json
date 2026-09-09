@@ -1,0 +1,46 @@
+{
+  "slug": "alpha-field",
+  "field_name": "ALPHA FIELD",
+  "equity_field_name": "ALPHA FIELD",
+  "field_match_method": "exact",
+  "excluded_periods": [],
+  "resolution_status_by_period": {
+    "202511": "resolved",
+    "202512": "resolved",
+    "202601": "resolved"
+  },
+  "ownership_intervals": [
+    {
+      "company_name": "ALPHA ENTITY LIMITED",
+      "interest_pct": 80,
+      "start_date": "201303",
+      "end_date": null,
+      "operator_flag": "Y",
+      "status": "resolved"
+    },
+    {
+      "company_name": "BETA ENTITY LIMITED",
+      "interest_pct": 20,
+      "start_date": "201303",
+      "end_date": null,
+      "operator_flag": "N",
+      "status": "resolved"
+    },
+    {
+      "company_name": "GAMMA ENTITY LIMITED",
+      "interest_pct": 0,
+      "start_date": "201501",
+      "end_date": "202001",
+      "operator_flag": "N",
+      "status": "resolved"
+    },
+    {
+      "company_name": "DELTA ENTITY LIMITED",
+      "interest_pct": 5,
+      "start_date": "201401",
+      "end_date": "201401",
+      "operator_flag": "N",
+      "status": "resolved"
+    }
+  ]
+}

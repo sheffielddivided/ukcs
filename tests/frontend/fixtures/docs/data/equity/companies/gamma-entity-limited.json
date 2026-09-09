@@ -1,0 +1,32 @@
+{
+  "slug": "gamma-entity-limited",
+  "name": "GAMMA ENTITY LIMITED",
+  "label": "Legal entity as recorded by NSTA",
+  "field_count": 1,
+  "fields": ["alpha-field"],
+  "first_published_period": "202511",
+  "last_published_period": "202601",
+  "series": [
+    {
+      "period": "202511",
+      "oil_mbd": { "value": 0.0, "coverage_pct": 100.0, "status": "complete" },
+      "dry_gas_mmscfd": { "value": 0.0, "coverage_pct": 100.0, "status": "complete" },
+      "assoc_gas_mmscfd": { "value": 0.0, "coverage_pct": 100.0, "status": "complete" },
+      "condensate_mbd": { "value": 0.0, "coverage_pct": 100.0, "status": "complete" }
+    },
+    {
+      "period": "202512",
+      "oil_mbd": { "value": 0.0, "coverage_pct": 100.0, "status": "complete" },
+      "dry_gas_mmscfd": { "value": 0.0, "coverage_pct": 100.0, "status": "complete" },
+      "assoc_gas_mmscfd": { "value": 0.0, "coverage_pct": 100.0, "status": "complete" },
+      "condensate_mbd": { "value": 0.0, "coverage_pct": 100.0, "status": "complete" }
+    },
+    {
+      "period": "202601",
+      "oil_mbd": { "value": 0.0, "coverage_pct": 100.0, "status": "complete" },
+      "dry_gas_mmscfd": { "value": 0.0, "coverage_pct": 100.0, "status": "complete" },
+      "assoc_gas_mmscfd": { "value": 0.0, "coverage_pct": 100.0, "status": "complete" },
+      "condensate_mbd": { "value": 0.0, "coverage_pct": 100.0, "status": "complete" }
+    }
+  ]
+}

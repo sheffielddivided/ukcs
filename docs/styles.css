@@ -350,3 +350,319 @@ footer {
 #status-banner[hidden] {
   display: none;
 }
+
+#equity-status-banner {
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+}
+
+#equity-status-banner.warning {
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  color: var(--error-text);
+  margin: 1rem;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+#equity-status-banner[hidden] {
+  display: none;
+}
+
+.header-methodology-link {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+}
+
+.header-methodology-link:hover,
+.header-methodology-link:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.methodology-link {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+/* --- Global search --- */
+
+.search-box {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+#global-search {
+  width: 100%;
+  padding: 0.4rem;
+  font-size: 0.9rem;
+}
+
+#global-search:focus-visible {
+  outline: 2px solid var(--color-gas);
+  outline-offset: 1px;
+}
+
+.search-results {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.search-results[hidden] {
+  display: none;
+}
+
+.search-result {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-result:last-child {
+  border-bottom: none;
+}
+
+.search-result-active {
+  background: var(--page-plane);
+}
+
+.search-result-type {
+  display: inline-block;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 0.3rem;
+  margin-right: 0.4rem;
+}
+
+/* --- Metric mode toggle --- */
+
+.metric-mode-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.75rem;
+}
+
+.mode-button {
+  padding: 0.4rem 0.5rem;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--page-plane);
+  color: var(--text-secondary);
+}
+
+.mode-button[aria-pressed="true"] {
+  background: var(--color-gas);
+  color: #fff;
+  border-color: var(--color-gas);
+  font-weight: 600;
+}
+
+.mode-button:focus-visible {
+  outline: 2px solid var(--color-gas);
+  outline-offset: 1px;
+}
+
+#equity-company-input {
+  width: 100%;
+  padding: 0.4rem;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+/* --- Equity coverage badges / values --- */
+
+.coverage-badge {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.coverage-complete {
+  background: rgba(27, 175, 122, 0.15);
+  color: #1baf7a;
+}
+
+.coverage-warning {
+  background: rgba(237, 161, 0, 0.18);
+  color: #a97400;
+}
+
+.coverage-unavailable {
+  background: var(--border);
+  color: var(--text-muted);
+}
+
+.equity-value-unavailable {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.equity-latest-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin: 0.5rem 0;
+}
+
+.equity-latest-table th,
+.equity-latest-table td {
+  text-align: left;
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.coverage-explanation {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  background: var(--page-plane);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.4rem;
+}
+
+.murlach-note {
+  font-size: 0.8rem;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  color: var(--error-text);
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  margin: 0.75rem 0;
+  line-height: 1.4;
+}
+
+.murlach-note a {
+  color: inherit;
+}
+
+.stream-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+
+.stream-tab {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--page-plane);
+  color: var(--text-secondary);
+}
+
+.stream-tab[aria-selected="true"] {
+  background: var(--color-gas);
+  color: #fff;
+  border-color: var(--color-gas);
+}
+
+.stream-tab:focus-visible {
+  outline: 2px solid var(--color-gas);
+  outline-offset: 1px;
+}
+
+.field-slug-list {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.source-limitations summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.source-limitations ul {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding-left: 1.2rem;
+}
+
+/* --- Field panel tabs --- */
+
+.field-panel-tabs {
+  display: flex;
+  gap: 0.3rem;
+  border-bottom: 1px solid var(--border);
+  margin: 0.5rem 0;
+}
+
+.panel-tab {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-secondary);
+}
+
+.panel-tab[aria-selected="true"] {
+  color: var(--text-primary);
+  border-bottom-color: var(--color-gas);
+  font-weight: 600;
+}
+
+.panel-tab:focus-visible {
+  outline: 2px solid var(--color-gas);
+  outline-offset: 1px;
+}
+
+.panel-tab[hidden] {
+  display: none;
+}
+
+/* --- Field ownership table --- */
+
+.ownership-table td {
+  vertical-align: top;
+}
+
+.zero-interest-row {
+  color: var(--text-muted);
+}
+
+.zero-interest-badge {
+  font-size: 0.72rem;
+  font-style: italic;
+}
+
+.source-event-details summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}

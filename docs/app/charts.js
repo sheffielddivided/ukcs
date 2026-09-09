@@ -105,3 +105,56 @@ export async function renderHistoryCharts(liquidsEl, gasEl, series) {
     ],
   });
 }
+
+// Single-stream equity chart (spec: equity frontend checkpoint). One
+// stream per chart, its own unit, never combined with another stream's
+// axis. Unavailable months are passed as `value: null` - ECharts leaves a
+// genuine gap for a null point (it does not connect across it) unless
+// connectNulls is set, which this deliberately never sets, so a gap in
+// coverage is never visually smoothed over into an implied continuous
+// line (spec: "never display zero as a substitute", "do not connect a
+// chart line across an unavailable month").
+let equityChart = null;
+
+export async function renderEquityStreamChart(el, points, streamLabel, unit) {
+  const echarts = await loadEcharts();
+  attachResizeListener();
+
+  if (equityChart) equityChart.dispose();
+  equityChart = echarts.init(el);
+
+  const periods = points.map((p) => p.period);
+  const values = points.map((p) => (p.status === "unavailable" ? null : p.value));
+
+  equityChart.setOption({
+    title: { text: `${streamLabel} (${unit})`, left: 4, textStyle: { fontSize: 13 } },
+    tooltip: {
+      trigger: "axis",
+      formatter: (params) => {
+        const p = params[0];
+        const point = points[p.dataIndex];
+        const statusLabel = { complete: "Complete", warning: "Warning", unavailable: "Not available" }[point.status] || point.status;
+        const valueText = point.status === "unavailable" ? "Not available" : `${point.value} ${unit}`;
+        const coverageText = point.coverage_pct == null ? "n/a" : `${point.coverage_pct}%`;
+        return (
+          `${point.period}<br/>` +
+          `${streamLabel}: ${valueText}<br/>` +
+          `Coverage: ${coverageText} (${statusLabel})`
+        );
+      },
+    },
+    grid: { top: 56, left: 60, right: 20, bottom: 40 },
+    xAxis: { type: "category", data: periods, axisLabel: { rotate: 45, fontSize: 10 } },
+    yAxis: { type: "value", name: unit },
+    series: [
+      {
+        name: streamLabel,
+        type: "line",
+        showSymbol: false,
+        connectNulls: false,
+        color: "#2a78d6",
+        data: values,
+      },
+    ],
+  });
+}

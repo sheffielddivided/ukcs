@@ -1,0 +1,16 @@
+{
+  "field": "ALPHA FIELD",
+  "slug": "alpha-field",
+  "location": "Offshore",
+  "operator": "EXAMPLE OPERATOR LIMITED",
+  "region": "CNS",
+  "units": [
+    { "first_period": "202511", "last_period": "202601", "name": "ALPHA FIELD", "type": "Oil Field Exporting to Pipeline" }
+  ],
+  "storage_units": [],
+  "series": [
+    { "period": "202511", "oil_mbd": 10.5, "condensate_mbd": 0.2, "assoc_gas_mmscfd": 1.0, "dry_gas_mmscfd": 5.0, "water_mbd": 2.1 },
+    { "period": "202512", "oil_mbd": 9.8, "condensate_mbd": 0.18, "assoc_gas_mmscfd": 0.9, "dry_gas_mmscfd": 4.8, "water_mbd": 2.0 },
+    { "period": "202601", "oil_mbd": 10.0, "condensate_mbd": 0.15, "assoc_gas_mmscfd": 1.0, "dry_gas_mmscfd": 4.5, "water_mbd": 2.0 }
+  ]
+}

@@ -1,0 +1,46 @@
+name: Frontend tests
+
+# Committed, CI-compatible tests for the docs/app/*.js frontend (equity
+# frontend checkpoint, spec section 14). Separate from build-data.yml,
+# which is scoped to the weekly ETL rebuild - this workflow never
+# touches docs/data/ and never commits anything, it only runs the
+# browser-based frontend suite under tests/frontend/ against small
+# synthetic fixture data (tests/frontend/fixtures/), never the live
+# published artifacts and never a live network call: maplibre-gl and
+# echarts are stubbed (see tests/frontend/conftest.py).
+on:
+  push:
+    paths:
+      - "docs/app/**"
+      - "docs/index.html"
+      - "tests/frontend/**"
+      - ".github/workflows/frontend-tests.yml"
+  pull_request:
+    paths:
+      - "docs/app/**"
+      - "docs/index.html"
+      - "tests/frontend/**"
+      - ".github/workflows/frontend-tests.yml"
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r tests/frontend/requirements.txt
+
+      - name: Install Chromium
+        run: playwright install --with-deps chromium
+
+      - name: Run frontend tests
+        run: pytest tests/frontend -v

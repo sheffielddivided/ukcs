@@ -1,0 +1,16 @@
+{
+  "alpha-field": {
+    "field": "ALPHA FIELD",
+    "first_period": "202511",
+    "last_period": "202601",
+    "operator": "EXAMPLE OPERATOR LIMITED",
+    "region": "CNS"
+  },
+  "murlach-pt-of-marnock-skua": {
+    "field": "MURLACH [pt of MARNOCK-SKUA]",
+    "first_period": "202511",
+    "last_period": "202601",
+    "operator": "EXAMPLE OPERATOR LIMITED",
+    "region": "CNS"
+  }
+}

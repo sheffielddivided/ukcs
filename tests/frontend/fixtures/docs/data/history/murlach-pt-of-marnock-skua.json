@@ -1,0 +1,16 @@
+{
+  "field": "MURLACH [pt of MARNOCK-SKUA]",
+  "slug": "murlach-pt-of-marnock-skua",
+  "location": "Offshore",
+  "operator": "EXAMPLE OPERATOR LIMITED",
+  "region": "CNS",
+  "units": [
+    { "first_period": "202511", "last_period": "202601", "name": "MURLACH [pt of MARNOCK-SKUA]", "type": "Gas Field Exporting to Pipeline" }
+  ],
+  "storage_units": [],
+  "series": [
+    { "period": "202511", "oil_mbd": 3.1, "condensate_mbd": 0.05, "assoc_gas_mmscfd": 0.5, "dry_gas_mmscfd": 1.1, "water_mbd": 0.3 },
+    { "period": "202512", "oil_mbd": 3.0, "condensate_mbd": 0.05, "assoc_gas_mmscfd": 0.5, "dry_gas_mmscfd": 1.0, "water_mbd": 0.3 },
+    { "period": "202601", "oil_mbd": 3.0, "condensate_mbd": 0.05, "assoc_gas_mmscfd": 0.5, "dry_gas_mmscfd": 1.0, "water_mbd": 0.3 }
+  ]
+}

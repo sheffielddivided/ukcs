@@ -1,0 +1,56 @@
+{
+  "alpha-entity-limited": {
+    "name": "ALPHA ENTITY LIMITED",
+    "first_published_period": "202511",
+    "last_published_period": "202601",
+    "field_count": 1,
+    "latest_production": {
+      "oil_mbd": null,
+      "dry_gas_mmscfd": 4.5,
+      "assoc_gas_mmscfd": null,
+      "condensate_mbd": 0.15
+    },
+    "latest_coverage_status": {
+      "oil_mbd": "unavailable",
+      "dry_gas_mmscfd": "complete",
+      "assoc_gas_mmscfd": "unavailable",
+      "condensate_mbd": "complete"
+    }
+  },
+  "beta-entity-limited": {
+    "name": "BETA ENTITY LIMITED",
+    "first_published_period": "202511",
+    "last_published_period": "202601",
+    "field_count": 1,
+    "latest_production": {
+      "oil_mbd": 3.0,
+      "dry_gas_mmscfd": 1.0,
+      "assoc_gas_mmscfd": 0.5,
+      "condensate_mbd": 0.05
+    },
+    "latest_coverage_status": {
+      "oil_mbd": "complete",
+      "dry_gas_mmscfd": "complete",
+      "assoc_gas_mmscfd": "complete",
+      "condensate_mbd": "complete"
+    }
+  },
+  "gamma-entity-limited": {
+    "name": "GAMMA ENTITY LIMITED",
+    "first_published_period": "202511",
+    "last_published_period": "202601",
+    "field_count": 1,
+    "latest_production": {
+      "oil_mbd": 0.0,
+      "dry_gas_mmscfd": 0.0,
+      "assoc_gas_mmscfd": 0.0,
+      "condensate_mbd": 0.0
+    },
+    "latest_coverage_status": {
+      "oil_mbd": "complete",
+      "dry_gas_mmscfd": "complete",
+      "assoc_gas_mmscfd": "complete",
+      "condensate_mbd": "complete"
+    }
+  }
+}

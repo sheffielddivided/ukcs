@@ -1,0 +1,43 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [1.5, 58.0] },
+      "properties": {
+        "field": "ALPHA FIELD",
+        "slug": "alpha-field",
+        "operator": "EXAMPLE OPERATOR LIMITED",
+        "region": "CNS",
+        "location": "Offshore",
+        "period": "202601",
+        "oil_mbd": 10.0,
+        "condensate_mbd": 0.1,
+        "assoc_gas_mmscfd": 1.0,
+        "dry_gas_mmscfd": 4.5,
+        "water_mbd": 2.0,
+        "unit_count": 1,
+        "storage_unit_count": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [1.8, 58.4] },
+      "properties": {
+        "field": "MURLACH [pt of MARNOCK-SKUA]",
+        "slug": "murlach-pt-of-marnock-skua",
+        "operator": "EXAMPLE OPERATOR LIMITED",
+        "region": "CNS",
+        "location": "Offshore",
+        "period": "202601",
+        "oil_mbd": 3.0,
+        "condensate_mbd": 0.05,
+        "assoc_gas_mmscfd": 0.5,
+        "dry_gas_mmscfd": 1.0,
+        "water_mbd": 1.0,
+        "unit_count": 1,
+        "storage_unit_count": 0
+      }
+    }
+  ]
+}
