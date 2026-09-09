@@ -1734,6 +1734,55 @@ not close on its own.
 
 ---
 
+### 15.14 Production deployment and live verification (2026-09-09) — MERGED TO MAIN
+
+`claude/ukcs-equity-production-tyjna2` was merged into `main` (fast-forward, no rewrite, no
+squash) and deployed via GitHub Pages. Live verification (real browser against the live site,
+using a request-relay harness for the network hop this sandbox's Chromium cannot sustain directly
+to an external host — see the verification report for the exact distinction between live-byte,
+relay-based, and CI evidence) confirmed the core regression, equity company view, coverage display
+(including a real live `warning`-status example), MURLACH treatment, field ownership detail,
+search, and error isolation all work correctly against real production data and zero NSTA/ArcGIS
+requests. One defect was found and reported (not fixed on the spot, per instruction): equity stream
+selection was not preserved in shareable URL state, contradicting the "Search and URL state"
+paragraph above. See 15.15 for the fix.
+
+### 15.15 Equity stream URL-state fix (2026-09-09) — FIXED
+
+**Root cause.** `equity-ui.js`'s stream-tab selection lived only in a module-level `currentStreamIndex`
+variable; nothing ever called `setUrlState` with a `stream` value, and `main.js`'s URL-restore logic
+never read one either — despite `urlstate.js` already supporting a generic `stream` parameter
+end-to-end. The two halves were never connected.
+
+**Fix.** `equity.js`'s `PRODUCTION_STREAMS` gained a fixed `urlSlug` per stream (`oil`, `dry-gas`,
+`associated-gas`, `condensate` — the public URL vocabulary) plus a `streamIndexFromUrlSlug()`
+lookup. `equity-ui.js`'s `drawStream()` now calls the existing `setUrlState()` (imported, not
+reimplemented) on every draw, including the initial one, so the URL always reflects whichever
+stream is actually showing; the module-level `currentStreamIndex` was removed in favour of an
+explicit `initialStreamIndex` threaded through `openEquityPanel()`. `main.js`'s URL-restore logic
+(refactored into a named `restoreFromUrl()` function) now resolves `initial.stream` via
+`streamIndexFromUrlSlug()`, falling back to Oil with a specific, non-disruptive
+`#equity-status-banner` message for an unrecognised value, and silently for a missing one.
+Switching to operator mode now clears an inapplicable equity `stream`/`view` from the URL.
+`restoreFromUrl()` is also now wired to `popstate`, so back/forward against a same-document hash
+change (the only kind this app's exclusive use of `history.replaceState` ever produces two distinct
+entries for) restores UI state consistently, not just the address bar. No second state mechanism
+was introduced — this is entirely `urlstate.js`'s existing `parseUrlState`/`setUrlState`, called
+from one more place.
+
+**Tests.** 17 tests added to `tests/frontend/test_equity_frontend.py` (parametrized across all four
+streams where applicable): per-stream URL update on selection, per-stream URL restoration, fresh-
+session restoration of entity+stream together, invalid-stream fallback-with-message, missing-stream
+silent default, operator-mode-drops-stream, field/operator URL state unaffected, back/forward
+consistency, no-reload-on-stream-click, and deterministic URL formatting. Full suite: 48 frontend
+(Playwright) + 159 ETL (pytest) tests, both green.
+
+**Files changed.** `docs/app/equity.js`, `docs/app/equity-ui.js`, `docs/app/main.js`,
+`tests/frontend/test_equity_frontend.py`, this document. No equity calculation, coverage policy,
+publication date, source handling, or company-mapping code was touched.
+
+---
+
 ## 16. Phase 3 — deferred
 
 Field determination polygons and zoom-dependent point-to-polygon switching; wells; infrastructure

@@ -14,12 +14,22 @@ export { DataLoadError };
 const EQUITY_META_URL = "./data/equity/meta.json";
 const EQUITY_INDEX_URL = "./data/equity/index.json";
 
+// urlSlug is the fixed, public vocabulary used in shareable URL state
+// (urlstate.js's "stream" param) - stable strings, independent of the
+// internal artifact key, never exposing a file path.
 export const PRODUCTION_STREAMS = [
-  { key: "oil_mbd", label: "Oil", unit: "mb/d" },
-  { key: "dry_gas_mmscfd", label: "Dry gas", unit: "MMscf/d" },
-  { key: "assoc_gas_mmscfd", label: "Associated gas", unit: "MMscf/d" },
-  { key: "condensate_mbd", label: "Condensate", unit: "mb/d" },
+  { key: "oil_mbd", label: "Oil", unit: "mb/d", urlSlug: "oil" },
+  { key: "dry_gas_mmscfd", label: "Dry gas", unit: "MMscf/d", urlSlug: "dry-gas" },
+  { key: "assoc_gas_mmscfd", label: "Associated gas", unit: "MMscf/d", urlSlug: "associated-gas" },
+  { key: "condensate_mbd", label: "Condensate", unit: "mb/d", urlSlug: "condensate" },
 ];
+
+// Returns the PRODUCTION_STREAMS index for a URL "stream" slug, or -1 if
+// the slug isn't one of the fixed supported values (an invalid or stale
+// link - the caller falls back to Oil and reports it, never guesses).
+export function streamIndexFromUrlSlug(slug) {
+  return PRODUCTION_STREAMS.findIndex((s) => s.urlSlug === slug);
+}
 
 export const LEGAL_ENTITY_LABEL = "Legal entity as recorded by NSTA";
 

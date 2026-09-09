@@ -12,7 +12,7 @@ import { initMap, filterByOperator } from "./map.js";
 import { renderHistoryCharts } from "./charts.js";
 import { DataLoadError, fetchJson, getFieldHistory, getOperatorHistory } from "./state.js";
 import { formatBuiltAt, formatPeriod, formatPeriodShort, slugify } from "./format.js";
-import { getEquityMeta, getEquityIndex } from "./equity.js";
+import { getEquityMeta, getEquityIndex, streamIndexFromUrlSlug } from "./equity.js";
 import { openEquityPanel, attachFieldOwnershipTab } from "./equity-ui.js";
 import { buildSearchIndex, attachSearchUI } from "./search.js";
 import { parseUrlState, setUrlState } from "./urlstate.js";
@@ -262,9 +262,9 @@ async function openOperatorPanel(operatorName, operatorsSplit, updateUrl = true)
   }
 }
 
-async function openEquityPanelBySlug(slug, entityName, updateUrl = true) {
+async function openEquityPanelBySlug(slug, entityName, updateUrl = true, initialStreamIndex = 0) {
   if (updateUrl) setUrlState({ view: "equity", slug, metric: "equity" });
-  await openEquityPanel(slug, entityName);
+  await openEquityPanel(slug, entityName, { initialStreamIndex });
 }
 
 function setMetricMode(mode) {
@@ -318,7 +318,16 @@ async function main() {
   });
 
   document.getElementById("mode-equity").addEventListener("click", () => setMetricMode("equity"));
-  document.getElementById("mode-operator").addEventListener("click", () => setMetricMode("operator"));
+  document.getElementById("mode-operator").addEventListener("click", () => {
+    setMetricMode("operator");
+    // A stream selection is only ever meaningful in equity mode - leaving
+    // an equity URL (with its stream) in place while the UI now shows
+    // operator controls would be a stale, inapplicable link. No operator
+    // is selected yet at this point (the user just clicked the toggle),
+    // so there is nothing else to preserve; selecting an operator next
+    // writes its own fresh URL state via openOperatorPanel.
+    if (parseUrlState().view === "equity") setUrlState({});
+  });
   setMetricMode("equity");
 
   // --- Equity data (isolated failure: never blocks the production map) ---
@@ -387,36 +396,56 @@ async function main() {
   );
 
   // --- URL state restore ---
-  const initial = parseUrlState();
-  if (initial.view === "field" && initial.slug) {
-    const fieldFeature = fieldsGeojson.features.find((f) => f.properties.slug === initial.slug);
-    const entry = ui.fieldsBySlug.get(initial.slug);
-    if (fieldFeature) {
-      openFieldPanel(fieldFeature.properties, false);
-    } else if (entry) {
-      openFieldPanel({ field: entry.field, slug: initial.slug, operator: null, region: null, location: null }, false);
-    } else {
-      showError(`No field found for '${initial.slug}' in the saved link. It may be stale.`);
-    }
-  } else if (initial.view === "equity" && initial.slug) {
-    if (equityIndex && equityIndex[initial.slug]) {
-      setMetricMode("equity");
-      document.getElementById("equity-company-input").value = equityIndex[initial.slug].name;
-      openEquityPanelBySlug(initial.slug, equityIndex[initial.slug].name, false);
-    } else if (equityIndex) {
-      showError(`No equity legal entity found for '${initial.slug}' in the saved link. It may be stale.`);
-    }
-  } else if (initial.view === "operator" && initial.slug) {
-    const operatorName = operators.find((op) => slugify(op) === initial.slug);
-    if (operatorName) {
-      setMetricMode("operator");
-      document.getElementById("operator-filter").value = operatorName;
-      filterByOperator(map, operatorName);
-      openOperatorPanel(operatorName, meta.operators_split, false);
-    } else {
-      showError(`No operator found for '${initial.slug}' in the saved link. It may be stale.`);
+  // Named so it can run both at startup and on popstate (browser
+  // back/forward): re-parses location.hash from scratch each time, so
+  // the panel/mode/stream shown always matches whatever the current URL
+  // actually says - never a stale in-memory leftover from a prior state.
+  function restoreFromUrl() {
+    const initial = parseUrlState();
+    if (initial.view === "field" && initial.slug) {
+      const fieldFeature = fieldsGeojson.features.find((f) => f.properties.slug === initial.slug);
+      const entry = ui.fieldsBySlug.get(initial.slug);
+      if (fieldFeature) {
+        openFieldPanel(fieldFeature.properties, false);
+      } else if (entry) {
+        openFieldPanel({ field: entry.field, slug: initial.slug, operator: null, region: null, location: null }, false);
+      } else {
+        showError(`No field found for '${initial.slug}' in the saved link. It may be stale.`);
+      }
+    } else if (initial.view === "equity" && initial.slug) {
+      if (equityIndex && equityIndex[initial.slug]) {
+        setMetricMode("equity");
+        document.getElementById("equity-company-input").value = equityIndex[initial.slug].name;
+        let initialStreamIndex = 0;
+        if (initial.stream) {
+          const idx = streamIndexFromUrlSlug(initial.stream);
+          if (idx >= 0) {
+            initialStreamIndex = idx;
+          } else {
+            showEquityWarning(
+              `The production stream '${initial.stream}' in this link is not recognised. Showing Oil instead.`
+            );
+          }
+        }
+        openEquityPanelBySlug(initial.slug, equityIndex[initial.slug].name, false, initialStreamIndex);
+      } else if (equityIndex) {
+        showError(`No equity legal entity found for '${initial.slug}' in the saved link. It may be stale.`);
+      }
+    } else if (initial.view === "operator" && initial.slug) {
+      const operatorName = operators.find((op) => slugify(op) === initial.slug);
+      if (operatorName) {
+        setMetricMode("operator");
+        document.getElementById("operator-filter").value = operatorName;
+        filterByOperator(map, operatorName);
+        openOperatorPanel(operatorName, meta.operators_split, false);
+      } else {
+        showError(`No operator found for '${initial.slug}' in the saved link. It may be stale.`);
+      }
     }
   }
+
+  restoreFromUrl();
+  window.addEventListener("popstate", restoreFromUrl);
 }
 
 main();

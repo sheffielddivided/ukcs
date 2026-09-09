@@ -14,6 +14,8 @@
 # assert_no_forbidden_requests, called at the end of every test that
 # touches the page.
 
+import pytest
+
 FORBIDDEN_HOST_SUBSTRINGS = [
     "nstauthority.co.uk",
     "arcgis.com",
@@ -501,3 +503,174 @@ def test_rendering_is_deterministic_across_repeated_selection(load_app, page):
     page.wait_for_timeout(500)
     second = page.text_content("#field-panel-content")
     assert first == second
+
+
+# --- Equity stream URL state (focused fix checkpoint) -------------------
+#
+# Supported URL stream slugs: oil, dry-gas, associated-gas, condensate -
+# see docs/app/equity.js's PRODUCTION_STREAMS[].urlSlug, the single
+# source of truth for this vocabulary (urlstate.js itself stays generic
+# and merely passes the "stream" param through unvalidated).
+
+STREAM_LABELS_BY_SLUG = {
+    "oil": "Oil",
+    "dry-gas": "Dry gas",
+    "associated-gas": "Associated gas",
+    "condensate": "Condensate",
+}
+
+
+@pytest.mark.parametrize("slug,label", list(STREAM_LABELS_BY_SLUG.items()))
+def test_selecting_each_stream_updates_url_state(load_app, page, slug, label):
+    load_app()
+    select_equity_company(page, "ALPHA ENTITY LIMITED")
+    page.click(f".stream-selector button:has-text('{label}')")
+    page.wait_for_timeout(300)
+    assert f"stream={slug}" in page.url
+    assert "view=equity" in page.url
+    assert "slug=alpha-entity-limited" in page.url
+
+
+@pytest.mark.parametrize("slug,label", list(STREAM_LABELS_BY_SLUG.items()))
+def test_url_restoration_for_each_stream(load_app, page, http_server, slug, label):
+    load_app(f"view=equity&slug=alpha-entity-limited&metric=equity&stream={slug}")
+    page.wait_for_selector("#field-panel-content .equity-latest-table", timeout=5000)
+    active_tab = page.locator(".stream-tab[aria-selected='true']")
+    assert active_tab.text_content().strip() == label
+    option = page.evaluate("() => window.__echartsCharts['equity-chart']")
+    assert label in option["title"]["text"]
+
+
+def test_fresh_load_restores_legal_entity_and_stream(load_app, page):
+    # Simulates "opening a copied URL in a fresh browser session": no
+    # prior interaction on this page object at all before the goto.
+    load_app("view=equity&slug=beta-entity-limited&metric=equity&stream=dry-gas")
+    page.wait_for_selector("#field-panel-content .equity-latest-table", timeout=5000)
+    text = page.text_content("#field-panel-content")
+    assert "BETA ENTITY LIMITED" in text
+    active_tab = page.locator(".stream-tab[aria-selected='true']")
+    assert active_tab.text_content().strip() == "Dry gas"
+
+
+def test_invalid_stream_falls_back_to_oil_with_message(load_app, page):
+    load_app("view=equity&slug=alpha-entity-limited&metric=equity&stream=not-a-real-stream")
+    page.wait_for_selector("#field-panel-content .equity-latest-table", timeout=5000)
+    active_tab = page.locator(".stream-tab[aria-selected='true']")
+    assert active_tab.text_content().strip() == "Oil"
+    banner = page.text_content("#equity-status-banner")
+    assert "not-a-real-stream" in banner
+    assert "not recognised" in banner.lower() or "not recognized" in banner.lower()
+    # Non-disruptive: the panel itself still rendered successfully.
+    assert page.locator("#field-panel-content .equity-latest-table").count() == 1
+
+
+def test_missing_stream_defaults_to_oil_without_a_message(load_app, page):
+    load_app("view=equity&slug=alpha-entity-limited&metric=equity")
+    page.wait_for_selector("#field-panel-content .equity-latest-table", timeout=5000)
+    active_tab = page.locator(".stream-tab[aria-selected='true']")
+    assert active_tab.text_content().strip() == "Oil"
+    banner_hidden = page.get_attribute("#equity-status-banner", "hidden")
+    assert banner_hidden is not None  # no spurious warning for the ordinary default case
+
+
+def test_switching_to_operator_mode_drops_inapplicable_equity_stream_state(load_app, page):
+    load_app()
+    select_equity_company(page, "ALPHA ENTITY LIMITED")
+    page.click(".stream-selector button:has-text('Dry gas')")
+    page.wait_for_timeout(300)
+    assert "stream=dry-gas" in page.url
+
+    page.click("#mode-operator")
+    page.wait_for_timeout(200)
+    assert "stream=" not in page.url
+    assert "view=equity" not in page.url
+
+
+def test_field_url_state_unaffected_by_stream_fix(load_app, page):
+    load_app()
+    page.fill("#global-search", "ALPHA FIELD")
+    page.wait_for_timeout(500)
+    page.click(".search-result")
+    page.wait_for_timeout(700)
+    assert "view=field" in page.url
+    assert "slug=alpha-field" in page.url
+    assert "stream=" not in page.url
+
+
+def test_operator_url_state_unaffected_by_stream_fix(load_app, page):
+    load_app()
+    page.click("#mode-operator")
+    page.select_option("#operator-filter", "EXAMPLE OPERATOR LIMITED")
+    page.click("#view-operator-history")
+    page.wait_for_timeout(700)
+    assert "view=operator" in page.url
+    assert "stream=" not in page.url
+
+
+def test_browser_back_forward_keeps_stream_and_panel_consistent(load_app, page):
+    # Entry 1: the initial load. This app only ever uses
+    # history.replaceState (urlstate.js) - it never pushes a new entry on
+    # its own - so entry 1's stored state keeps getting overwritten in
+    # place as the user interacts, right up until a REAL navigation (like
+    # the one below) pushes a second, distinct entry.
+    load_app()
+    select_equity_company(page, "ALPHA ENTITY LIMITED")
+    page.wait_for_timeout(300)
+    assert "stream=oil" in page.url
+
+    # A real navigation to a different hash pushes entry 2. Since only the
+    # fragment differs, the browser treats this as a same-document
+    # navigation and fires popstate on subsequent back/forward rather than
+    # reloading - exactly the case main.js's new popstate listener exists
+    # for.
+    page.goto(
+        page.url.split("#")[0] + "#view=equity&slug=alpha-entity-limited&metric=equity&stream=condensate",
+        wait_until="load",
+    )
+    page.wait_for_timeout(300)
+    active_tab = page.locator(".stream-tab[aria-selected='true']")
+    assert active_tab.text_content().strip() == "Condensate"
+
+    page.go_back()
+    page.wait_for_timeout(500)
+    active_tab_after_back = page.locator(".stream-tab[aria-selected='true']")
+    assert active_tab_after_back.text_content().strip() == "Oil"
+    assert "stream=oil" in page.url
+
+    page.go_forward()
+    page.wait_for_timeout(500)
+    active_tab_after_forward = page.locator(".stream-tab[aria-selected='true']")
+    assert active_tab_after_forward.text_content().strip() == "Condensate"
+    assert "stream=condensate" in page.url
+
+
+def test_stream_selection_never_triggers_a_full_page_reload(load_app, page):
+    load_app()
+    select_equity_company(page, "ALPHA ENTITY LIMITED")
+    reload_count = page.evaluate("() => { window.__navCount = (window.__navCount || 0); return window.__navCount; }")
+    page.evaluate("() => { window.__markerBeforeStreamClick = true; }")
+    page.click(".stream-selector button:has-text('Associated gas')")
+    page.wait_for_timeout(300)
+    # If a real navigation/reload had occurred, this page-scoped global
+    # would have been wiped - its survival proves no reload happened.
+    still_present = page.evaluate("() => window.__markerBeforeStreamClick === true")
+    assert still_present
+    assert "stream=associated-gas" in page.url
+
+
+def test_stream_url_formatting_is_deterministic(load_app, page):
+    load_app()
+    select_equity_company(page, "ALPHA ENTITY LIMITED")
+    page.click(".stream-selector button:has-text('Dry gas')")
+    page.wait_for_timeout(300)
+    first_url = page.url
+
+    page.click(".stream-selector button:has-text('Oil')")
+    page.wait_for_timeout(200)
+    page.click(".stream-selector button:has-text('Dry gas')")
+    page.wait_for_timeout(300)
+    second_url = page.url
+
+    assert first_url == second_url
+    # Exact, stable param order/format - not just equivalent content.
+    assert second_url.endswith("#view=equity&slug=alpha-entity-limited&metric=equity&stream=dry-gas")

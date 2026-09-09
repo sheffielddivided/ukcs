@@ -16,6 +16,7 @@ import {
 } from "./equity.js";
 import { renderEquityStreamChart } from "./charts.js";
 import { formatPeriodShort } from "./format.js";
+import { setUrlState } from "./urlstate.js";
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => (
@@ -103,15 +104,17 @@ function renderEquityPanelShell(companyName) {
   panel.hidden = false;
 }
 
-let currentStreamIndex = 0;
-
-async function renderEquityPanelBody(company, meta) {
+async function renderEquityPanelBody(company, meta, { initialStreamIndex = 0 } = {}) {
   const content = document.getElementById("field-panel-content");
   const loadingEl = content.querySelector(".panel-loading");
   if (loadingEl) loadingEl.remove();
 
   const latest = company.series[company.series.length - 1];
   const murlachAffected = await isMurlachAffected(company.name);
+  const startIndex =
+    Number.isInteger(initialStreamIndex) && initialStreamIndex >= 0 && initialStreamIndex < PRODUCTION_STREAMS.length
+      ? initialStreamIndex
+      : 0;
 
   const section = document.createElement("div");
   section.innerHTML = `
@@ -139,7 +142,7 @@ async function renderEquityPanelBody(company, meta) {
     <div class="panel-section-title">Monthly equity-attributable production</div>
     <div class="stream-selector" role="tablist" aria-label="Production stream">
       ${PRODUCTION_STREAMS.map(
-        (s, i) => `<button type="button" class="stream-tab" role="tab" aria-selected="${i === currentStreamIndex}"
+        (s, i) => `<button type="button" class="stream-tab" role="tab" aria-selected="${i === startIndex}"
           data-stream-index="${i}">${escapeHtml(s.label)}</button>`
       ).join("")}
     </div>
@@ -159,7 +162,6 @@ async function renderEquityPanelBody(company, meta) {
 
   const chartEl = document.getElementById("equity-chart");
   const drawStream = (index) => {
-    currentStreamIndex = index;
     const streamMeta = PRODUCTION_STREAMS[index];
     const points = company.series.map((entry) => ({
       period: entry.period,
@@ -176,19 +178,27 @@ async function renderEquityPanelBody(company, meta) {
     for (const btn of content.querySelectorAll(".stream-tab")) {
       btn.setAttribute("aria-selected", String(Number(btn.dataset.streamIndex) === index));
     }
+    // Selecting a stream updates the shareable URL - never a full reload
+    // (history.replaceState, same as every other selection in this app).
+    // Always runs, including the initial draw on open/restore: since
+    // setUrlState is idempotent (replaceState, not pushState), writing
+    // back an already-correct state on restore is a harmless no-op, and
+    // this is the one place that guarantees the URL always reflects
+    // whichever stream is actually showing.
+    setUrlState({ view: "equity", slug: company.slug, metric: "equity", stream: streamMeta.urlSlug });
   };
 
   for (const btn of content.querySelectorAll(".stream-tab")) {
     btn.addEventListener("click", () => drawStream(Number(btn.dataset.streamIndex)));
   }
-  drawStream(currentStreamIndex);
+  drawStream(startIndex);
 }
 
-export async function openEquityPanel(companySlug, companyName, onError) {
+export async function openEquityPanel(companySlug, companyName, { onError, initialStreamIndex = 0 } = {}) {
   renderEquityPanelShell(companyName ?? companySlug);
   try {
     const [company, meta] = await Promise.all([getCompanyEquity(companySlug), getEquityMeta()]);
-    await renderEquityPanelBody(company, meta);
+    await renderEquityPanelBody(company, meta, { initialStreamIndex });
   } catch (err) {
     const content = document.getElementById("field-panel-content");
     const loadingEl = content.querySelector(".panel-loading");
