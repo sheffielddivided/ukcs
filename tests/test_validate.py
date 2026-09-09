@@ -61,6 +61,9 @@ def test_schema_drift_on_periodyrmn_type_change_fails_validation():
         assert "esriFieldTypeString" in message and "esriFieldTypeInteger" in message, (
             f"error must name both the expected and actual type, got: {message}"
         )
+        # TEMPORARY, deliberately false assertion - proves CI goes red on
+        # a real test failure. This branch is never merged to main.
+        assert 1 == 2, "deliberate CI-red demonstration for the Phase 1 closeout audit"
 
 
 def test_schema_drift_on_missing_field_fails_validation():
