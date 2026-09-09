@@ -327,7 +327,13 @@ def build_matching_report(
     unmatched_detail: list[dict],
     dup_equity_norm: dict,
     latest_period: str,
+    zero_interest_operators: list[dict],
 ) -> str:
+    """zero_interest_operators must be computed by the caller (e.g. via
+    zero_interest_rows_with_operator_flag()) and passed in explicitly -
+    this function does no file I/O of its own, so it behaves identically
+    whether called from main() or from a test with synthetic data, and
+    never depends on a workbook being cached on disk."""
     pprs_fields = set(pprs_universe.keys())
     total_pprs = len(pprs_fields)
     total_equity = len(equity_fields)
@@ -517,7 +523,6 @@ def build_matching_report(
     future_dated = [r for r in equity_rows if r["start_date"] and r["start_date"] >= "2027-01-01"]
     zero_duration = [r for r in equity_rows if r["start_date"] == r["end_date"]]
     zero_interest = [r for r in equity_rows if r["is_zero_interest"]]
-    zero_interest_operators = zero_interest_rows_with_operator_flag()
     open_ended = [r for r in equity_rows if r["end_date"] is None]
     sentinel = [r for r in equity_rows if r["start_is_sentinel"]]
 
@@ -579,6 +584,7 @@ def main() -> int:
         unmatched_detail = unmatched_field_detail(
             match_result["unmatched_pprs"], pprs_universe, latest_production, latest_period
         )
+        zero_interest_operators = zero_interest_rows_with_operator_flag()
 
         report = build_matching_report(
             pprs_universe,
@@ -589,6 +595,7 @@ def main() -> int:
             unmatched_detail,
             dup_equity_norm,
             latest_period,
+            zero_interest_operators,
         )
         MATCHING_REPORT_PATH.write_text(report)
         print(report)

@@ -188,8 +188,8 @@ def test_matching_report_is_deterministic():
     unmatched_detail = []
     dup_equity_norm = {}
 
-    report_a = build_matching_report(pprs_universe, equity_fields, equity_rows, match_result, coverage, unmatched_detail, dup_equity_norm, "202606")
-    report_b = build_matching_report(pprs_universe, equity_fields, equity_rows, match_result, coverage, unmatched_detail, dup_equity_norm, "202606")
+    report_a = build_matching_report(pprs_universe, equity_fields, equity_rows, match_result, coverage, unmatched_detail, dup_equity_norm, "202606", [])
+    report_b = build_matching_report(pprs_universe, equity_fields, equity_rows, match_result, coverage, unmatched_detail, dup_equity_norm, "202606", [])
     assert report_a == report_b
 
 
@@ -205,7 +205,7 @@ def test_matching_report_contains_key_figures():
     unmatched_detail = [
         {"field_name": "GONE FIELD", "first_period": "199001", "last_period": "199512", "produced_in_latest_period": False, "latest_period_production": None}
     ]
-    report = build_matching_report(pprs_universe, equity_fields, equity_rows, match_result, coverage, unmatched_detail, {}, "202606")
+    report = build_matching_report(pprs_universe, equity_fields, equity_rows, match_result, coverage, unmatched_detail, {}, "202606", [])
     assert "GONE FIELD" in report
     assert "Exact matches: 1" in report
     assert "Unmatched PPRS fields: 1" in report
