@@ -1,0 +1,4 @@
+field_name,unit_name,classification,note
+ROUGH,ROUGH STORAGE,storage,Gas storage redelivery. Has reported nonzero DGASPROMMS historically (max ~1512 MMscf/d) - would double-count against ROUGH PRODUCTION if summed. Excluded from production totals; surfaced separately in the field panel.
+HATFIELD,HATFIELD MOOR GAS STORAGE INJECTION,storage,Gas storage injection. DGASPROMMS is 0 in all observed rows; volumes are reported under GASINJVOL. Excluded from production totals on principle (it is not a production unit) even though it does not currently pollute the DGASPROMMS sum.
+HUMBLY GROVE,HUMBLY GROVE GAS STORAGE,storage,Gas storage. DGASPROMMS is 0 in all observed rows; volumes are reported under GASINJVOL. Excluded from production totals on principle even though it does not currently pollute the DGASPROMMS sum.
