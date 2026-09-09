@@ -1,66 +1,21 @@
-// Entry point (spec section 10.3). Loads meta.json and fields.geojson only
-// - nothing else is fetched on startup, and nothing here ever calls an
-// NSTA or ArcGIS host (the browser only ever reads ./data/*, pre-built by
-// etl/build.py).
+// Entry point (spec section 10.3). Loads meta.json, fields.geojson and
+// history/index.json on startup; per-field history is lazy-loaded on
+// selection (state.js). Nothing here ever calls an NSTA or ArcGIS host -
+// the browser only ever reads ./data/*, pre-built by etl/build.py.
 import { initMap, filterByOperator } from "./map.js";
+import { renderHistoryCharts } from "./charts.js";
+import { DataLoadError, fetchJson, getFieldHistory } from "./state.js";
+import { formatBuiltAt, formatPeriod, formatPeriodShort } from "./format.js";
 
 const DATA_META_URL = "./data/meta.json";
 const DATA_FIELDS_URL = "./data/fields.geojson";
-
-class DataLoadError extends Error {}
-
-// Distinguishes network failure, HTTP error and JSON-parse failure rather
-// than collapsing them into one message - the same discipline the ETL
-// applies to ArcGIS calls (spec section 3), applied here to our own
-// static artifacts.
-async function fetchJson(url) {
-  let response;
-  try {
-    response = await fetch(url);
-  } catch (networkErr) {
-    throw new DataLoadError(
-      `Network error fetching ${url}: ${networkErr.message} ` +
-        "(the request never completed - check the browser is online and " +
-        "the file is being served, not opened via file://)"
-    );
-  }
-  if (!response.ok) {
-    throw new DataLoadError(
-      `HTTP ${response.status} ${response.statusText} fetching ${url}`
-    );
-  }
-  try {
-    return await response.json();
-  } catch (parseErr) {
-    throw new DataLoadError(
-      `Response from ${url} was not valid JSON: ${parseErr.message}`
-    );
-  }
-}
+const DATA_HISTORY_INDEX_URL = "./data/history/index.json";
 
 function showError(message) {
   const banner = document.getElementById("status-banner");
   banner.textContent = message;
   banner.classList.add("error");
   banner.hidden = false;
-}
-
-function formatPeriod(period) {
-  // period is "YYYYMM" as a string, per PPRS (spec section 6).
-  if (!/^\d{6}$/.test(period)) return period;
-  const year = period.slice(0, 4);
-  const month = parseInt(period.slice(4, 6), 10);
-  const monthNames = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-  ];
-  return `${monthNames[month - 1]} ${year} (period ${period})`;
-}
-
-function formatBuiltAt(builtAt) {
-  const date = new Date(builtAt);
-  if (Number.isNaN(date.getTime())) return builtAt;
-  return date.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
 }
 
 function renderFooter(meta) {
@@ -96,13 +51,128 @@ function populateOperatorFilter(fieldsGeojson, onChange) {
   select.addEventListener("change", () => onChange(select.value || null));
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+function buildUnitTableRows(units, classification) {
+  return units
+    .map(
+      (u) => `
+      <tr class="${classification === "storage" ? "storage-row" : ""}">
+        <td>${escapeHtml(u.name)}</td>
+        <td>${escapeHtml(u.type)}</td>
+        <td>${escapeHtml(formatPeriodShort(u.first_period))}&ndash;${escapeHtml(formatPeriodShort(u.last_period))}</td>
+        <td><span class="unit-classification-badge ${classification}">${classification}</span></td>
+      </tr>`
+    )
+    .join("");
+}
+
+function renderFieldPanelShell(fieldProps) {
+  const panel = document.getElementById("field-panel");
+  const content = document.getElementById("field-panel-content");
+  content.innerHTML = `
+    <div class="panel-field-name">${escapeHtml(fieldProps.field)}</div>
+    <div class="panel-meta-row">Operator: ${escapeHtml(fieldProps.operator ?? "–")}</div>
+    <div class="panel-meta-row">Region: ${escapeHtml(fieldProps.region ?? "–")} (${escapeHtml(fieldProps.location ?? "–")})</div>
+    <div class="panel-loading">Loading history&hellip;</div>
+  `;
+  panel.hidden = false;
+}
+
+function renderFieldPanelHistory(history) {
+  const content = document.getElementById("field-panel-content");
+  const loadingEl = content.querySelector(".panel-loading");
+  if (loadingEl) loadingEl.remove();
+
+  const allUnits = [
+    ...history.units.map((u) => ({ ...u, classification: "production" })),
+    ...history.storage_units.map((u) => ({ ...u, classification: "storage" })),
+  ].sort((a, b) => a.first_period.localeCompare(b.first_period));
+
+  const hasMultipleProductionNames = history.units.length > 1;
+  const hasStorage = history.storage_units.length > 0;
+
+  const section = document.createElement("div");
+  section.innerHTML = `
+    <div class="panel-section-title">Reporting units</div>
+    <table class="unit-table">
+      <thead><tr><th>Name</th><th>Type</th><th>Period</th><th>Class</th></tr></thead>
+      <tbody>
+        ${buildUnitTableRows(history.units, "production")}
+        ${buildUnitTableRows(history.storage_units, "storage")}
+      </tbody>
+    </table>
+    ${
+      hasStorage
+        ? `<div class="panel-storage-note">
+             ${history.storage_units.length} storage reporting unit(s)
+             (${history.storage_units.map((u) => escapeHtml(u.name)).join(", ")})
+             excluded from the production charts and totals below at every period,
+             not merged in (spec section 7.3).
+           </div>`
+        : ""
+    }
+    ${
+      hasMultipleProductionNames
+        ? `<div class="panel-storage-note" style="background:transparent;border-color:var(--border);color:var(--text-secondary);">
+             This field's production series spans a reporting-unit rename
+             (${history.units.map((u) => escapeHtml(u.name)).join(" → ")}).
+             The series above is continuous across the rename; see the table
+             for exactly which unit name covered which period.
+           </div>`
+        : ""
+    }
+    <div class="panel-section-title">Monthly production history</div>
+    <div id="chart-liquids" class="chart-box"></div>
+    <div id="chart-gas" class="chart-box"></div>
+  `;
+  content.appendChild(section);
+
+  const liquidsEl = document.getElementById("chart-liquids");
+  const gasEl = document.getElementById("chart-gas");
+  renderHistoryCharts(liquidsEl, gasEl, history.series).catch((err) => {
+    const errEl = document.createElement("div");
+    errEl.className = "panel-error";
+    errEl.textContent = `Failed to load charts.\n\n${err.message}`;
+    content.appendChild(errEl);
+  });
+}
+
+async function openFieldPanel(fieldProps) {
+  renderFieldPanelShell(fieldProps);
+  try {
+    const history = await getFieldHistory(fieldProps.slug);
+    renderFieldPanelHistory(history);
+  } catch (err) {
+    const content = document.getElementById("field-panel-content");
+    const loadingEl = content.querySelector(".panel-loading");
+    if (loadingEl) loadingEl.remove();
+    const errEl = document.createElement("div");
+    errEl.className = "panel-error";
+    errEl.textContent =
+      "Failed to load field history.\n\n" +
+      (err instanceof DataLoadError ? err.message : String(err));
+    content.appendChild(errEl);
+  }
+}
+
+function closeFieldPanel() {
+  document.getElementById("field-panel").hidden = true;
+}
+
 async function main() {
   let meta;
   let fieldsGeojson;
+  let historyIndex;
   try {
-    [meta, fieldsGeojson] = await Promise.all([
+    [meta, fieldsGeojson, historyIndex] = await Promise.all([
       fetchJson(DATA_META_URL),
       fetchJson(DATA_FIELDS_URL),
+      fetchJson(DATA_HISTORY_INDEX_URL),
     ]);
   } catch (err) {
     showError(
@@ -113,11 +183,20 @@ async function main() {
   }
 
   renderFooter(meta);
+  // history/index.json (field -> operator/region/first/last period, spec
+  // 9.3) is loaded at startup per spec 10.3, ready for the search/
+  // autocomplete UI - not built in this step, so nothing reads
+  // historyIndex yet beyond confirming it loaded successfully as part of
+  // this fetch. Its size is still genuinely part of the measured
+  // cold-cache load below.
+  console.debug(`history index loaded: ${Object.keys(historyIndex).length} fields`);
 
-  const map = initMap("map", fieldsGeojson);
+  const map = initMap("map", fieldsGeojson, openFieldPanel);
   populateOperatorFilter(fieldsGeojson, (operator) => {
     filterByOperator(map, operator);
   });
+
+  document.getElementById("field-panel-close").addEventListener("click", closeFieldPanel);
 }
 
 main();

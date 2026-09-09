@@ -75,7 +75,7 @@ function buildPopupHtml(properties) {
   `;
 }
 
-export function initMap(containerId, fieldsGeojsonRaw) {
+export function initMap(containerId, fieldsGeojsonRaw, onFieldClick) {
   const fieldsGeojson = computeDerivedProperties(fieldsGeojsonRaw);
 
   const map = new MapLibreMap({
@@ -166,6 +166,12 @@ export function initMap(containerId, fieldsGeojsonRaw) {
       map.getCanvas().style.cursor = "";
       popup.remove();
     });
+
+    if (onFieldClick) {
+      map.on("click", CIRCLE_LAYER_ID, (e) => {
+        onFieldClick(e.features[0].properties);
+      });
+    }
   });
 
   return map;

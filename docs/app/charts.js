@@ -1,0 +1,107 @@
+// History charts (spec section 10.2 View B / 13 step 6).
+//
+// Oil/condensate (mb/d) and gas (MMscf/d) are rendered as two SEPARATE
+// charts, each with its own single y-axis - never one chart with dual
+// y-axes sharing mb/d and MMscf/d. Two charts is a stronger guarantee of
+// "never share an axis" than a dual-axis single chart would be, and
+// avoids the reader having to work out which line belongs to which axis.
+//
+// ECharts is loaded lazily on first use (not on page load) via a
+// dynamically injected <script> with a verified SRI hash, so the map view
+// (spec section 13 step 4) never pays ECharts' ~1.1 MB load cost unless a
+// field panel is actually opened.
+
+const ECHARTS_URL = "https://cdn.jsdelivr.net/npm/echarts@6.1.0/dist/echarts.min.js";
+const ECHARTS_SRI = "sha256-tmslrrTfhOMxmdwhaUAU0zbSIsvZ3rDlp8FL1qoND9A=";
+
+let echartsLoadPromise = null;
+
+function loadEcharts() {
+  if (echartsLoadPromise) return echartsLoadPromise;
+  echartsLoadPromise = new Promise((resolve, reject) => {
+    if (window.echarts) {
+      resolve(window.echarts);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = ECHARTS_URL;
+    script.integrity = ECHARTS_SRI;
+    script.crossOrigin = "anonymous";
+    script.onload = () => resolve(window.echarts);
+    script.onerror = () =>
+      reject(
+        new Error(
+          `Failed to load ECharts from ${ECHARTS_URL} - either a network ` +
+            "error, or the script was blocked because its bytes did not " +
+            "match the pinned integrity hash."
+        )
+      );
+    document.head.appendChild(script);
+  });
+  return echartsLoadPromise;
+}
+
+let liquidsChart = null;
+let gasChart = null;
+let resizeListenerAttached = false;
+
+function attachResizeListener() {
+  if (resizeListenerAttached) return;
+  resizeListenerAttached = true;
+  window.addEventListener("resize", () => {
+    if (liquidsChart) liquidsChart.resize();
+    if (gasChart) gasChart.resize();
+  });
+}
+
+export async function renderHistoryCharts(liquidsEl, gasEl, series) {
+  const echarts = await loadEcharts();
+  attachResizeListener();
+
+  if (liquidsChart) liquidsChart.dispose();
+  if (gasChart) gasChart.dispose();
+
+  const periods = series.map((s) => s.period);
+  const axisLabel = { rotate: 45, fontSize: 10 };
+  const grid = { top: 56, left: 55, right: 20, bottom: 40 };
+
+  liquidsChart = echarts.init(liquidsEl);
+  liquidsChart.setOption({
+    title: { text: "Oil & condensate (mb/d)", left: 4, textStyle: { fontSize: 13 } },
+    tooltip: { trigger: "axis" },
+    legend: { data: ["Oil", "Condensate"], top: 26, textStyle: { fontSize: 11 } },
+    grid,
+    xAxis: { type: "category", data: periods, axisLabel },
+    yAxis: { type: "value", name: "mb/d" },
+    series: [
+      {
+        name: "Oil", type: "line", showSymbol: false, color: "#2a78d6",
+        data: series.map((s) => s.oil_mbd),
+      },
+      {
+        name: "Condensate", type: "line", showSymbol: false, color: "#eb6834",
+        data: series.map((s) => s.condensate_mbd),
+      },
+    ],
+  });
+
+  gasChart = echarts.init(gasEl);
+  gasChart.setOption({
+    title: { text: "Gas (MMscf/d)", left: 4, textStyle: { fontSize: 13 } },
+    tooltip: { trigger: "axis" },
+    legend: { data: ["Associated gas", "Dry gas"], top: 26, textStyle: { fontSize: 11 } },
+    grid,
+    xAxis: { type: "category", data: periods, axisLabel },
+    yAxis: { type: "value", name: "MMscf/d" },
+    series: [
+      {
+        name: "Associated gas", type: "line", showSymbol: false, color: "#1baf7a",
+        data: series.map((s) => s.assoc_gas_mmscfd),
+      },
+      {
+        name: "Dry gas", type: "line", showSymbol: false, color: "#eda100",
+        data: series.map((s) => s.dry_gas_mmscfd),
+      },
+    ],
+  });
+}
