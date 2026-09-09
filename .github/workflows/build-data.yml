@@ -9,6 +9,13 @@ name: Build data
 # docstring), so a validation failure here always means: red job, zero
 # commits, docs/data/ untouched. There is no partial-write path to guard
 # against separately.
+#
+# Sequence: checkout -> install deps -> run tests -> run build -> detect
+# substantive changes -> commit if needed. Tests run BEFORE the build
+# fetches anything, and a failing test stops the job (no continue-on-error
+# anywhere in this file), so the build step never runs against a suite
+# that's already red - closing the Phase 1 audit gap where 27+ committed
+# tests existed but nothing in CI ever executed them.
 on:
   schedule:
     - cron: "17 4 * * 1" # weekly, Monday ~04:17 UTC (off the hour, avoids GH Actions' documented top-of-hour congestion)
@@ -46,7 +53,17 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r etl/requirements.txt
+        # tests/requirements.txt pulls in etl/requirements.txt (-r) plus
+        # pytest, so this one install covers both the build and the test
+        # suite - no separate install step needed for tests.
+        run: pip install -r tests/requirements.txt
+
+      - name: Run tests
+        # No network calls in the test suite (see tests/test_*.py
+        # docstrings) - this is fast and deterministic, never flaky on
+        # live-service availability. A failing test stops the job here;
+        # "Run build" below never executes against a red suite.
+        run: pytest tests/ -v
 
       - name: Run build
         run: python etl/build.py
