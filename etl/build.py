@@ -38,7 +38,6 @@ from arcgis import (  # noqa: E402
 )
 from transform import (  # noqa: E402
     GENERATED_FROM_OPERATOR,
-    VALUE_FIELD_MAP,
     aggregate_history,
     aggregate_latest_period,
     aggregate_operators,
@@ -51,7 +50,10 @@ from validate import (  # noqa: E402
     ValidationError,
     check_against_previous_build,
     validate_bounding_box,
+    validate_no_negative_aggregated_values,
     validate_no_negative_values,
+    validate_operator_conservation,
+    validate_pagination_count,
     validate_schema,
     validate_unit_classification_tripwire,
 )
@@ -217,14 +219,7 @@ def main() -> int:
             )
         )
         print(f"Fetched {len(rows)} latest-period rows (independent count: {independent_count})")
-
-        if len(rows) != independent_count:
-            raise BuildError(
-                f"Pagination mismatch: fetched {len(rows)} rows via "
-                f"query_all but an independent outStatistics COUNT query "
-                f"returned {independent_count} for the same where clause. "
-                "This indicates a pagination bug and must not proceed."
-            )
+        validate_pagination_count(len(rows), independent_count, "latest-period fetch")
 
         validate_no_negative_values(rows)
 
@@ -283,12 +278,7 @@ def main() -> int:
             f"Fetched {len(history_rows)} full-history rows "
             f"(independent count: {history_independent_count})"
         )
-        if len(history_rows) != history_independent_count:
-            raise BuildError(
-                f"Pagination mismatch on full-history fetch: fetched "
-                f"{len(history_rows)} rows via query_all but an independent "
-                f"outStatistics COUNT query returned {history_independent_count}."
-            )
+        validate_pagination_count(len(history_rows), history_independent_count, "full-history fetch")
 
         validate_no_negative_values(history_rows)
         validate_unit_classification_tripwire(history_rows, classification_map)
@@ -315,34 +305,39 @@ def main() -> int:
 
         operators_index, operators_per_slug = build_operators_artifacts(operator_histories)
 
-        # Conservation check: attributing every field's history to its
-        # current operator must not add or drop any volume - the total of
-        # each value field summed across all operator-period entries must
-        # equal the same total summed across all field-period entries.
-        # This is a straight repartition (each field belongs to exactly
-        # one operator), so any mismatch indicates a real aggregation bug,
-        # not rounding noise beyond the tolerance below.
-        for out_key in VALUE_FIELD_MAP.values():
-            field_total = sum(
-                point.get(out_key) or 0.0
-                for doc in history_per_slug.values()
-                for point in doc["series"]
-            )
-            operator_total = sum(
-                point.get(out_key) or 0.0
-                for doc in operators_per_slug.values()
-                for point in doc["series"]
-            )
-            if abs(field_total - operator_total) > 0.01:
-                raise BuildError(
-                    f"Operator aggregation is not conservative for {out_key!r}: "
-                    f"sum across all fields = {field_total}, sum across all "
-                    f"operators = {operator_total} (difference "
-                    f"{abs(field_total - operator_total)} exceeds tolerance). "
-                    "This indicates fields were dropped or double-counted "
-                    "when attributed to operators."
-                )
+        # Standing conservation rule (spec 8.3/13 step 8 - promoted from a
+        # step-7 inline check): same invariant-based pattern Phase 2's E1/
+        # E8 equity checks will use. See validate.py for the rationale.
+        validate_operator_conservation(
+            {slug: doc["series"] for slug, doc in history_per_slug.items()},
+            {slug: doc["series"] for slug, doc in operators_per_slug.items()},
+        )
         print("Operator aggregation conservation check passed for all value fields.")
+
+        # Explicit aggregate-level negative-value check (spec 8.3's literal
+        # "any field-level oil or gas value is negative" wording) across
+        # both fields.geojson's latest-period properties and every field's
+        # and operator's full history series. Structurally redundant with
+        # validate_no_negative_values() above given summation-only
+        # aggregation, but made explicit rather than implied - see
+        # validate.py.
+        validate_no_negative_aggregated_values(
+            {r.slug: [{
+                "period": r.period,
+                "oil_mbd": r.totals.get("oil_mbd"),
+                "assoc_gas_mmscfd": r.totals.get("assoc_gas_mmscfd"),
+                "dry_gas_mmscfd": r.totals.get("dry_gas_mmscfd"),
+                "condensate_mbd": r.totals.get("condensate_mbd"),
+                "water_mbd": r.totals.get("water_mbd"),
+            }] for r in records}
+        )
+        validate_no_negative_aggregated_values(
+            {slug: doc["series"] for slug, doc in history_per_slug.items()}
+        )
+        validate_no_negative_aggregated_values(
+            {slug: doc["series"] for slug, doc in operators_per_slug.items()}
+        )
+        print("Aggregate-level negative-value check passed (fields, history, operators).")
 
         operators_full_text_size = len(
             _json_text({"generated_from": None, "operators": {
@@ -358,12 +353,27 @@ def main() -> int:
             f"{'SPLIT into operators/*.json' if operators_split else 'single operators.json file'}"
         )
 
+        # --- Extension point for Phase 2 (spec 15.8) ---
+        # Equity fetch/parse/join slots in HERE: after history is
+        # aggregated (equity needs field-grain production, already built
+        # above) and BEFORE the meta dict and write block below, matching
+        # this function's existing shape (fetch+aggregate everything,
+        # THEN validate everything, THEN write everything atomically).
+        # validate_equity.py's E1-E9 checks join the other validate_*
+        # calls above this comment, before any write happens. The equity
+        # artifacts (docs/data/equity/*, docs/data/unmatched.json) join
+        # the write block below, and "sources": {"equity": {...}} joins
+        # the meta dict already sized for it (spec 9.1's example includes
+        # it). No restructuring should be needed - only insertion.
+
         previous_meta = load_previous_meta()
         delta_notes = check_against_previous_build(
             previous_meta,
             current_latest_period=latest_period,
             current_record_count=len(rows),
             current_field_count=agg_stats["production_field_count"],
+            current_history_record_count=len(history_rows),
+            current_history_field_count=history_stats["field_with_history_count"],
         )
         notes.extend(delta_notes)
 

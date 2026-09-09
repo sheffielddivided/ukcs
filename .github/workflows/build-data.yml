@@ -1,0 +1,87 @@
+name: Build data
+
+# Weekly scheduled rebuild of docs/data/*, plus manual trigger. See spec
+# section 11 / 13 step 8. PPRS is monthly; the schedule is weekly per
+# spec so a delayed NSTA release is picked up within days, not a month.
+#
+# Every check in etl/validate.py runs BEFORE any file under docs/data/ is
+# written (etl/build.py's own atomic-write discipline - see its
+# docstring), so a validation failure here always means: red job, zero
+# commits, docs/data/ untouched. There is no partial-write path to guard
+# against separately.
+on:
+  schedule:
+    - cron: "17 4 * * 1" # weekly, Monday ~04:17 UTC (off the hour, avoids GH Actions' documented top-of-hour congestion)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+# Only one build run at a time; a scheduled run overlapping a manual
+# workflow_dispatch (or a slow previous run still finishing) must not
+# race to commit docs/data/ concurrently. Do not cancel an in-flight
+# build just because another was requested - let it finish or fail
+# cleanly, then the next run starts from a clean, known state.
+concurrency:
+  group: build-data
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Generous but bounded: a real build takes under a minute locally.
+    # This is the outer safety net against a hung request that the
+    # per-request 30s timeout in etl/arcgis.py somehow doesn't catch (a
+    # TCP-level hang, or an unbounded retry/pagination loop) - it exists
+    # so a stuck run fails and frees the Actions minutes budget rather
+    # than running until GitHub's own hard 6-hour ceiling.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r etl/requirements.txt
+
+      - name: Run build
+        run: python etl/build.py
+
+      - name: Check for a substantive data change
+        id: changes
+        # meta.json's built_at changes on every successful build even
+        # when no upstream data changed (see etl/build.py), so a plain
+        # `git diff --quiet -- docs/data` would never be quiet and every
+        # run would produce an empty-content commit. Check every OTHER
+        # artifact first; if none of them changed, the only difference is
+        # built_at, so revert it and skip the commit entirely. This exact
+        # logic was verified locally against two consecutive real builds
+        # with unchanged upstream data before being put here - see the
+        # step 8 build report.
+        run: |
+          if git diff --quiet -- docs/data/fields.geojson docs/data/history docs/data/operators.json docs/data/operators; then
+            echo "No substantive data change (only built_at would differ) - reverting meta.json, skipping commit."
+            git checkout -- docs/data/meta.json
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Phase 2 (spec 15.8) will add docs/data/equity/* and
+      # docs/data/unmatched.json here and to the diff check above, and a
+      # step to upload the raw equity workbook as a build artifact
+      # (retention 90 days, spec 15.2) between "Run build" and this step.
+
+      - name: Commit and push
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          LATEST_PERIOD=$(python3 -c "import json; print(json.load(open('docs/data/meta.json'))['latest_period'])")
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/data
+          git commit -m "data: NSTA refresh, period ${LATEST_PERIOD}"
+          git push
