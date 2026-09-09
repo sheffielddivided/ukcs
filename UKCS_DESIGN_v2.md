@@ -169,6 +169,33 @@ Summary:
   UI was changed, and `etl/build.py` was not modified. The full historical join (~60 years ×
   ~550 fields) remains future work.
 
+### 0.5 What changed in v2.6
+
+`etl/equity_join_historical.py` runs the full historical interval-join diagnostic (spec section
+15.8 step 5) across all 133,608 PPRS field-months and 7,683 equity rows. See section 15.10 for
+the full write-up and `etl/equity_historical_join_report.md` /
+`etl/equity_historical_anomalies.json` for the complete run. Still a **diagnostic checkpoint
+only** - not integrated into `etl/build.py`, no `docs/data/equity/*` artifacts, no company alias
+or parent-group reconciliation, no UI changes.
+
+Headline finding, stated plainly because the evidence requires it: **full-history
+production-weighted coverage is low (oil 33.0%, dry gas 56.1%, associated gas 52.1%, condensate
+62.3%) and the historical model is not ready for publication or for integration into the
+unattended build.** This is not a defect in the join logic - annual coverage is close to 0% for
+most of 1975-2000 and only reaches consistently >95% from around 2009-2010 onward, because the
+equity workbook was not populated retroactively to most fields' actual production start dates
+(`pre_equity_history`: 27,064 of 133,608 field-months). A human decision is needed on how to
+proceed (restrict publication to well-covered years, or find an additional pre-2000 source) before
+any further Phase 2 work builds on this join.
+
+Other confirmed findings: partial first months are correctly isolated as `month_start_boundary`
+(100 field-months, mechanical, not missing data) and kept distinct from genuine gaps
+(`genuine_interval_gap`: 0 in the live data, once boundary effects are excluded); `ROCHELLE`'s
+known equity overlap predates its own PPRS production history and so never surfaces in this
+production-scoped run, though the quarantine mechanism itself is verified by a dedicated
+regression fixture; no new source anomalies beyond those already known in sections 15.3-15.4 were
+found at full-history scale.
+
 ---
 
 ## 1. Purpose
@@ -1270,17 +1297,25 @@ before royalty, tax and any entitlement adjustment, and the methodology page mus
 ### 15.8 Phase 2 build order
 
 1. `etl/equity_fetch.py` — locate and download the workbook, hash it, report sheet and column
-   structure. **Stop and report before parsing.**
+   structure. **Stop and report before parsing.** — **Done.**
 2. `etl/equity_parse.py` — normalised interval table; report row counts, date ranges, and the 0%
-   row question. **Stop and report.**
+   row question. **Stop and report.** — **Done.**
 3. Field name matching; produce the unmatched list; build the alias file. Check both pre- and
-   post-rename names for `SEAN`/`NORTH SEAN` and `COLUMBA B`/`COLUMBA BD` per section 15.5.
-4. `etl/equity_join.py` — interval join, latest period only; run E1 and E8. **Stop and report.**
-5. Full history join; all validation rules E1–E9.
-6. Company alias reconciliation.
-7. Artifacts, UI, methodology page.
+   post-rename names for `SEAN`/`NORTH SEAN` and `COLUMBA B`/`COLUMBA BD` per section 15.5. —
+   **Done.** No alias rows were needed (section 15.5).
+4. `etl/equity_join.py` — interval join, latest period only; run E1 and E8. **Stop and report.** —
+   **Done.**
+5. Full history join; all validation rules E1–E9 (E2, E3, E6, E9 not yet implemented; out of scope
+   for the diagnostic checkpoints so far). — **Done as a diagnostic checkpoint**
+   (`etl/equity_join_historical.py`). **Not ready for step 6/7 or publication** — see section 15.10.
+6. Company alias reconciliation. — **Not started.**
+7. Artifacts, UI, methodology page. — **Not started.**
 
-**Do not proceed past step 4 until E1 and E8 pass on the latest period.**
+**Do not proceed past step 4 until E1 and E8 pass on the latest period.** (They do — see section
+0.4.) **Do not proceed past step 5 (to company alias reconciliation or publication) until the
+full-history coverage picture in section 15.10 is judged acceptable by a human reviewer** — the
+diagnostic found coverage below 50% in most years before 2002, which the checkpoint does not
+consider itself qualified to approve or reject.
 
 ### 15.9 Acceptance criteria for Phase 2
 
@@ -1300,6 +1335,78 @@ before royalty, tax and any entitlement adjustment, and the methodology page mus
       storage classification and Rough's special case.
 - [ ] Both pre- and post-rename names are checked for `SEAN`/`NORTH SEAN` and
       `COLUMBA B`/`COLUMBA BD` before the alias file is finalised.
+
+### 15.10 Full-history diagnostic findings (v2.6, 2026-09-09) — NOT ready for publication
+
+`etl/equity_join_historical.py` applies the approved policies (sections 15.3-15.4) across the
+complete overlap between PPRS's 133,608 field-months (552 fields, 1975–present) and the equity
+workbook's 7,683 rows. **This is a diagnostic checkpoint only — not integrated into
+`etl/build.py`, no `docs/data/equity/*` artifacts, no company alias or parent-group
+reconciliation.** See `etl/equity_historical_join_report.md` and
+`etl/equity_historical_anomalies.json` for the full run.
+
+**Full-history production-weighted coverage is low and must not be read as the model being ready
+to publish**: oil 33.0%, dry gas 56.1%, associated gas 52.1%, condensate 62.3%. The reason is not
+a matching or interval-resolution defect — it is a genuine, structural property of the source:
+**annual coverage is close to 0% for most of 1975–2000, rises sharply through the early-to-mid
+2000s, and only reaches ~97–100% from around 2009–2010 onward** (e.g. oil coverage: 0.0% in
+1975–1980, 8.4% in 2000, 41.9% in 2002, 92.1% in 2007, 96.9% in 2011, 100.0% in 2018–2024). The
+equity workbook simply was not populated retroactively to most fields' actual production start
+dates — see `pre_equity_history` below.
+
+**E5 final resolution categories** (every producing field-month falls into exactly one):
+
+| Category | Field-months (live run) | Meaning |
+| --- | --- | --- |
+| `resolved` | 100,307 | Fully resolved, sum 100% ±0.5pp, no overlap |
+| `pre_equity_history` | 27,064 | Production month predates this field's earliest equity coverage, and that coverage is not itself future-dated relative to today — genuine absence of historical equity records, not an error |
+| `unmatched` | 6,127 | Field name has no equity workbook counterpart (52 fields, matches the milestone-2 field-matching result) |
+| `month_start_boundary` | 100 | Mechanical artifact: ownership begins this calendar month but not on day 1, so the month-start test finds nothing active for that one month even though coverage is effectively continuous |
+| `future_only` | 10 | Every equity row for this field starts after today (`MURLACH [pt of MARNOCK-SKUA]` only, in the live run) |
+| `quarantined` (E4 overlap) | 0 (live run) | Overlapping intervals. `ROCHELLE`'s August 2011 equity overlap is real (confirmed in the milestone-3 investigation and by a committed regression fixture) but never surfaces here: `ROCHELLE`'s own PPRS production history only starts 201306, after the overlap, so this production-scoped diagnostic never evaluates that field-month — there is no production to quarantine, not because the overlap was missed |
+| `e1_sum_mismatch` | 0 (live run) | Active interests resolve but do not sum to 100% ±0.5pp, and it is not an overlap |
+| `genuine_interval_gap` | 0 (live run) | A real break in equity coverage between two dated intervals, for a field that has coverage both before and after |
+| `no_equity_history` | 0 (live run) | Field matched by name, but the matched equity field name has zero rows (a defensive category; does not occur under the current exact/normalized/alias matcher) |
+
+**Partial first months are confirmed handled correctly, not merely assumed**: `month_start_boundary`
+only fires when an interval's own start date falls within the evaluated calendar month but after
+day 1 — 100 field-months across 97 fields, excluding a combined 424 mbd oil / 481 mmscfd dry gas /
+640 mmscfd associated gas / 1.4 mbd condensate from the historical total. This is distinct from,
+and far smaller than, `pre_equity_history`'s 27,064 field-months. The two must never be conflated:
+one is a one-month boundary rounding effect: the other is decades of the source simply not
+existing yet for a given field.
+
+**Historical quarantine**: 0 quarantined field-months in the current run, over the 133,608
+field-months where PPRS has actual production. `ROCHELLE`'s real August 2011 equity overlap
+predates `ROCHELLE`'s own production history (which starts 201306) so it is never evaluated here -
+the quarantine mechanism itself is verified independently by a dedicated regression fixture rather
+than relying on a live case recurring within the production-scoped range (see
+`tests/test_equity_join_historical.py::test_same_company_overlapping_histories_quarantined` and
+`etl/equity_join.py`'s own `test_rochelle_style_quarantine`). If a future workbook update
+reintroduces overlaps at scale, or extends any field's production history earlier, the quarantine
+policy (report, exclude, never normalise or prefer an owner) is unchanged, but its reporting
+format should be reviewed for scale per section 15.3.
+
+**No new source anomalies were identified beyond those already known** (838 zero-duration rows,
+241 zero-interest rows, 4 future-dated rows, 1 historical overlap). The full-history run confirms
+`genuine_interval_gap` is **zero** once boundary effects are correctly excluded — every apparent
+gap in the live data resolves to either `pre_equity_history`, `future_only`, or
+`month_start_boundary`.
+
+**MURLACH**: 10 affected producing months (202509–202606), excluding 110.3 mbd oil and 82.7 mmscfd
+associated gas from the historical total, entirely `future_only` (no `pre_equity_history` months
+for MURLACH — its full production history overlaps this single gap). A related equity field name,
+`MARNOCK [pt. of MARNOCK-SKUA]`, exists in the workbook, but its rows belong to a **different**
+field and were not applied to MURLACH without authoritative evidence they should be. This remains
+open for human review, not resolved here.
+
+**Conclusion: the historical model is not reliable enough to integrate into the unattended build
+pipeline as-is.** It is demonstrably reliable for recent history (~2009 onward, coverage
+consistently >95%) but not for 1975–2000, where coverage is frequently below 10%. Any future
+integration must either (a) restrict published historical equity-attributable production to the
+period where coverage is adequate, with the restriction stated prominently in the UI, or (b) find
+and integrate a source of pre-2000 equity intervals this workbook does not contain — a decision
+for a human reviewer, not made here.
 
 ---
 

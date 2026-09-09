@@ -1,0 +1,612 @@
+{
+  "e1_sum_mismatch_above_100": [],
+  "e1_sum_mismatch_below_100": [],
+  "genuine_interval_gaps": [],
+  "murlach_analysis": {
+    "categories_seen": [
+      "future_only"
+    ],
+    "excluded_production_by_stream": {
+      "assoc_gas_mmscfd": 82.734,
+      "condensate_mbd": 0.0,
+      "dry_gas_mmscfd": 0.0,
+      "oil_mbd": 110.342
+    },
+    "first_affected_period": "202509",
+    "latest_affected_period": "202606",
+    "murlach_own_equity_rows": [
+      {
+        "company": "BP EXPLORATION OPERATING COMPANY LIMITED",
+        "end": null,
+        "pct": 80.0,
+        "start": "2050-01-04"
+      },
+      {
+        "company": "NEO ENERGY (ZNS) LIMITED",
+        "end": null,
+        "pct": 20.0,
+        "start": "2050-01-04"
+      }
+    ],
+    "producing_months_affected": 10,
+    "related_equity_field_names_found": [
+      "MARNOCK [pt. of MARNOCK-SKUA]",
+      "MURLACH [pt of MARNOCK-SKUA]"
+    ]
+  },
+  "quarantined": [],
+  "unmatched_fields": [
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 173.715,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 546.97
+      },
+      "field": "ANGUS",
+      "first_period": "199112",
+      "last_period": "200806"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 54.834,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 170.661
+      },
+      "field": "ARDMORE",
+      "first_period": "200309",
+      "last_period": "200505"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 686.513,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 2451.101
+      },
+      "field": "ARGYLL",
+      "first_period": "197506",
+      "last_period": "199209"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 69.275,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 143.867
+      },
+      "field": "BLADON",
+      "first_period": "199709",
+      "last_period": "200003"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 2.671,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 6.321
+      },
+      "field": "BLAIR",
+      "first_period": "199001",
+      "last_period": "199105"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 284.31,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 666.866
+      },
+      "field": "BLENHEIM",
+      "first_period": "199504",
+      "last_period": "200003"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 13.344,
+        "oil_mbd": 0.0
+      },
+      "field": "CADEBY COAL MINE VENT",
+      "first_period": "201901",
+      "last_period": "202605"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.022,
+        "dry_gas_mmscfd": 304.371,
+        "oil_mbd": 0.0
+      },
+      "field": "CALLISTO NORTH",
+      "first_period": "200102",
+      "last_period": "201601"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 2.188,
+        "dry_gas_mmscfd": 6562.428,
+        "oil_mbd": 0.0
+      },
+      "field": "CAMELOT CENTRAL SOUTH",
+      "first_period": "199004",
+      "last_period": "201106"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.097,
+        "dry_gas_mmscfd": 652.325,
+        "oil_mbd": 0.0
+      },
+      "field": "CAMELOT NORTH",
+      "first_period": "199212",
+      "last_period": "201106"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.042,
+        "dry_gas_mmscfd": 578.556,
+        "oil_mbd": 0.0
+      },
+      "field": "CAMELOT NORTH EAST",
+      "first_period": "199212",
+      "last_period": "199812"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 342.096,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 127.312
+      },
+      "field": "CRAWFORD",
+      "first_period": "198904",
+      "last_period": "199011"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 4.81,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 132.688
+      },
+      "field": "DAUNTLESS",
+      "first_period": "199708",
+      "last_period": "199904"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 1.692,
+        "oil_mbd": 0.0
+      },
+      "field": "DOE GREEN COAL BED METHANE",
+      "first_period": "201301",
+      "last_period": "202506"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 70.343,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 206.903
+      },
+      "field": "DONAN",
+      "first_period": "199501",
+      "last_period": "199711"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 277.308,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 564.277
+      },
+      "field": "DUNCAN",
+      "first_period": "198311",
+      "last_period": "199209"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 50.482,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 223.322
+      },
+      "field": "DURWARD",
+      "first_period": "199708",
+      "last_period": "199904"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 850.878,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 528.578
+      },
+      "field": "EMERALD",
+      "first_period": "199208",
+      "last_period": "199602"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 0.0
+      },
+      "field": "ESMOND",
+      "first_period": "198506",
+      "last_period": "199502"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 40.078,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 420.172
+      },
+      "field": "FERGUS",
+      "first_period": "199609",
+      "last_period": "200806"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 208.444,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 1860.955
+      },
+      "field": "FIFE",
+      "first_period": "199508",
+      "last_period": "200806"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 62.288,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 510.195
+      },
+      "field": "FLORA",
+      "first_period": "199810",
+      "last_period": "200806"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 0.004
+      },
+      "field": "FORBES",
+      "first_period": "198509",
+      "last_period": "199301"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 9.789,
+        "dry_gas_mmscfd": 60139.287,
+        "oil_mbd": 0.0
+      },
+      "field": "FRIGG",
+      "first_period": "198412",
+      "last_period": "200409"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 0.005
+      },
+      "field": "GORDON",
+      "first_period": "198508",
+      "last_period": "199502"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 54.388,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 113.752
+      },
+      "field": "HAMISH",
+      "first_period": "199002",
+      "last_period": "200902"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 1029.308,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 6346.274
+      },
+      "field": "HUTTON",
+      "first_period": "198408",
+      "last_period": "200206"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 15.441,
+        "dry_gas_mmscfd": 11203.865,
+        "oil_mbd": 0.0
+      },
+      "field": "INDEFATIGABLE [SHELL]",
+      "first_period": "198907",
+      "last_period": "200507"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 305.156,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 184.175
+      },
+      "field": "INNES",
+      "first_period": "198503",
+      "last_period": "199112"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 3.68,
+        "oil_mbd": 0.0
+      },
+      "field": "IRONVILLE",
+      "first_period": "200204",
+      "last_period": "200909"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 719.754,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 2350.442
+      },
+      "field": "IVANHOE",
+      "first_period": "198907",
+      "last_period": "200902"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 0.0
+      },
+      "field": "KIRKLINGTON",
+      "first_period": "200907",
+      "last_period": "202404"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 136.313,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 574.553
+      },
+      "field": "LEADON",
+      "first_period": "200111",
+      "last_period": "200606"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 114.893,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 25.545
+      },
+      "field": "LINNHE",
+      "first_period": "198910",
+      "last_period": "199302"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 2922.632,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 7318.887
+      },
+      "field": "MAUREEN",
+      "first_period": "198309",
+      "last_period": "199909"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 41.123,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 137.766
+      },
+      "field": "MOIRA",
+      "first_period": "199008",
+      "last_period": "199906"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 2656.237,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 4086.53
+      },
+      "field": "NORTHWEST HUTTON",
+      "first_period": "198304",
+      "last_period": "200312"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 184.332,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 120.05
+      },
+      "field": "PLAYFAIR",
+      "first_period": "200411",
+      "last_period": "201402"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 235.744,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 293.752
+      },
+      "field": "RENEE",
+      "first_period": "199902",
+      "last_period": "200902"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 193.906,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 290.318
+      },
+      "field": "ROB ROY",
+      "first_period": "199907",
+      "last_period": "200902"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 1092.808,
+        "oil_mbd": 0.0
+      },
+      "field": "ROSE",
+      "first_period": "200401",
+      "last_period": "201702"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 134.926,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 371.983
+      },
+      "field": "RUBIE",
+      "first_period": "199905",
+      "last_period": "200902"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 95.156,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 368.113
+      },
+      "field": "SEDGWICK [PT. OF WEST BRAE]",
+      "first_period": "199710",
+      "last_period": "200012"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 22.291,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 33.844
+      },
+      "field": "SHELLEY",
+      "first_period": "200908",
+      "last_period": "201006"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 287.964,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 349.711
+      },
+      "field": "SKUA [pt. of MARNOCK-SKUA]",
+      "first_period": "200110",
+      "last_period": "201709"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 212.127,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 0.0,
+        "oil_mbd": 139.978
+      },
+      "field": "STAFFA",
+      "first_period": "199203",
+      "last_period": "199411"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.902,
+        "dry_gas_mmscfd": 1238.263,
+        "oil_mbd": 0.0
+      },
+      "field": "TRISTAN",
+      "first_period": "199211",
+      "last_period": "200410"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.004,
+        "dry_gas_mmscfd": 55.726,
+        "oil_mbd": 0.0
+      },
+      "field": "TRISTAN NW",
+      "first_period": "200803",
+      "last_period": "201704"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.0,
+        "dry_gas_mmscfd": 25.353,
+        "oil_mbd": 0.0
+      },
+      "field": "TRUMFLEET",
+      "first_period": "199803",
+      "last_period": "200910"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 33.7,
+        "dry_gas_mmscfd": 11468.419,
+        "oil_mbd": 0.0
+      },
+      "field": "VIKING",
+      "first_period": "198604",
+      "last_period": "199003"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 5.104,
+        "dry_gas_mmscfd": 6256.012,
+        "oil_mbd": 0.0
+      },
+      "field": "WELLAND NORTH WEST",
+      "first_period": "199009",
+      "last_period": "200411"
+    },
+    {
+      "cumulative_production_by_stream": {
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 1.557,
+        "dry_gas_mmscfd": 2590.383,
+        "oil_mbd": 0.0
+      },
+      "field": "WELLAND SOUTH",
+      "first_period": "199009",
+      "last_period": "200409"
+    }
+  ]
+}
