@@ -1,0 +1,503 @@
+{
+  "points_service_url": "https://services-eu1.arcgis.com/OZMfUznmLTnWccBc/arcgis/rest/services/UKCS_hydrocarbon_field_production_reports_PPRS_points_(WGS84)/FeatureServer",
+  "polygons_service_url": "https://services-eu1.arcgis.com/OZMfUznmLTnWccBc/arcgis/rest/services/UKCS_hydrocarbon_field_production_reports_PPRS_polygons_WGS84/FeatureServer",
+  "layer_url": "https://services-eu1.arcgis.com/OZMfUznmLTnWccBc/arcgis/rest/services/UKCS_hydrocarbon_field_production_reports_PPRS_points_(WGS84)/FeatureServer/0",
+  "maxRecordCount": 2000,
+  "supportsPagination": null,
+  "supportsStatistics": true,
+  "supportsAdvancedQueries": true,
+  "supportedQueryFormats": "JSON, geoJSON, PBF",
+  "fields": [
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID",
+      "alias": "OBJECTID",
+      "sqlType": "sqlTypeOther",
+      "nullable": false,
+      "editable": false,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "FIELDNAME",
+      "type": "esriFieldTypeString",
+      "alias": "Field name",
+      "sqlType": "sqlTypeOther",
+      "length": 50,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "FIELDAREA",
+      "type": "esriFieldTypeString",
+      "alias": "Field region",
+      "sqlType": "sqlTypeOther",
+      "length": 4,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "LOCATION",
+      "type": "esriFieldTypeString",
+      "alias": "Onshore, offshore flag",
+      "sqlType": "sqlTypeOther",
+      "length": 9,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "ORGGRPNM",
+      "type": "esriFieldTypeString",
+      "alias": "Operator organisation group",
+      "sqlType": "sqlTypeOther",
+      "length": 50,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "UNITNAME",
+      "type": "esriFieldTypeString",
+      "alias": "Reporting unit name",
+      "sqlType": "sqlTypeOther",
+      "length": 50,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "UNITTYPCOD",
+      "type": "esriFieldTypeString",
+      "alias": "Reporting unit type code",
+      "sqlType": "sqlTypeOther",
+      "length": 4,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "UNITTYPDES",
+      "type": "esriFieldTypeString",
+      "alias": "Reporting unit type description",
+      "sqlType": "sqlTypeOther",
+      "length": 50,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "PERIODYRMN",
+      "type": "esriFieldTypeString",
+      "alias": "Reporting period in yyyymm format",
+      "sqlType": "sqlTypeOther",
+      "length": 20,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "PERIODYR",
+      "type": "esriFieldTypeString",
+      "alias": "Reporting period year",
+      "sqlType": "sqlTypeOther",
+      "length": 200,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "PERIODMNTH",
+      "type": "esriFieldTypeString",
+      "alias": "Reporting period month",
+      "sqlType": "sqlTypeOther",
+      "length": 200,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "PERIODMNNM",
+      "type": "esriFieldTypeString",
+      "alias": "Reporting period month name",
+      "sqlType": "sqlTypeOther",
+      "length": 200,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "PERIODDATE",
+      "type": "esriFieldTypeDate",
+      "alias": "Reporting period date",
+      "sqlType": "sqlTypeOther",
+      "length": 8,
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null,
+      "precision": 1
+    },
+    {
+      "name": "OILPRODMAS",
+      "type": "esriFieldTypeDouble",
+      "alias": "Oil production - mass (tonnes)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "OILPRODM3",
+      "type": "esriFieldTypeDouble",
+      "alias": "Oil production - volume (m3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "OILPRODMBD",
+      "type": "esriFieldTypeDouble",
+      "alias": "Oil production - volume (mb/d)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "OILPRDDENS",
+      "type": "esriFieldTypeDouble",
+      "alias": "Oil production - density (kg/m3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "AGASPRODMA",
+      "type": "esriFieldTypeDouble",
+      "alias": "Associated gas production - mass (tonnes)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "AGASPROKSM",
+      "type": "esriFieldTypeDouble",
+      "alias": "Associated gas production - volume (ksm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "AGASPROMMS",
+      "type": "esriFieldTypeDouble",
+      "alias": "Associated gas production - volume (mmscf/d)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "AGASPRODEN",
+      "type": "esriFieldTypeDouble",
+      "alias": "Associated gas production - density (kg/sm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "DGASPRODMA",
+      "type": "esriFieldTypeDouble",
+      "alias": "Dry gas production - mass (tonnes)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "DGASPROKSM",
+      "type": "esriFieldTypeDouble",
+      "alias": "Dry gas production - volume (ksm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "DGASPROMMS",
+      "type": "esriFieldTypeDouble",
+      "alias": "Dry gas production - volume (mmscf/d)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "DGASPRODEN",
+      "type": "esriFieldTypeDouble",
+      "alias": "Dry gas production - density (kg/sm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GCONDMASS",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas condensate - mass (tonnes)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GCONDVOL",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas condensate - volume (m3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GCONDMBD",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas condensate - volume (mb/d)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GCONDDEN",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas condensate - density (kg/m3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GASINJCV",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas injected - cv (mj/sm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GASINJVOL",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas injected - volume (ksm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GASPIPCV",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas to pipeline - cv (mj/sm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GASPIPVOL",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas to pipeline - volume (ksm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GASPIPVOLM",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas to pipeline - volume (mmscf/d)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GASPIPDENS",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas to pipeline - density (kg/sm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GASFLARVOL",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas flared - volume (ksm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GASFLARDEN",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas flared - density (kg/sm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GASFLARNH",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas flared - non hydrocarbon (%)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GASVENTVOL",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas vented - volume (ksm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GASVENTDEN",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas vented - density (kg/sm3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "GASVENTNH",
+      "type": "esriFieldTypeDouble",
+      "alias": "Gas vented - non hydrocarbon (%)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "INJWATVOL",
+      "type": "esriFieldTypeDouble",
+      "alias": "Injected water - volume (m3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "INJWATMBD",
+      "type": "esriFieldTypeDouble",
+      "alias": "Injected water - volume (mb/d)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "WATPRODVOL",
+      "type": "esriFieldTypeDouble",
+      "alias": "Produced water - volume (m3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "WATPRODMBD",
+      "type": "esriFieldTypeDouble",
+      "alias": "Produced water - volume (mb/d)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    },
+    {
+      "name": "REINJWATVO",
+      "type": "esriFieldTypeDouble",
+      "alias": "Reinjected produced water - volume (m3)",
+      "sqlType": "sqlTypeOther",
+      "nullable": true,
+      "editable": true,
+      "domain": null,
+      "defaultValue": null
+    }
+  ],
+  "period_field": "PERIODYRMN",
+  "latest_period": "202606",
+  "grain_investigation": {
+    "where": "PERIODYRMN='202606'",
+    "row_count": 251,
+    "distinct_field_count": 250,
+    "distinct_field_unit_pair_count": 251,
+    "multi_unit_field_count": 1,
+    "multi_unit_fields": [
+      {
+        "field": "ROUGH",
+        "units": [
+          "ROUGH PRODUCTION",
+          "ROUGH STORAGE"
+        ]
+      }
+    ]
+  }
+}
