@@ -196,6 +196,17 @@ production-scoped run, though the quarantine mechanism itself is verified by a d
 regression fixture; no new source anomalies beyond those already known in sections 15.3-15.4 were
 found at full-history scale.
 
+### 0.6 What changed in v2.7
+
+Section 15.11 (new) records the publication-window and coverage-policy decision checkpoint
+(`etl/equity_publication_window.py`). **This is evidence, not a decision**: no publication start
+date, and no final policy among A-D, is approved by this version. See section 15.11 for the
+stability-threshold findings (condensate is the binding constraint among the four streams,
+stabilizing at 2013-03), the recommended-but-unadopted Policy D, the deeper MURLACH source review
+(confirms it remains unresolved; a working hypothesis about the 2050 date's origin is recorded as
+speculation, not fact), the bounded pre-2000 source search (nothing found that would close the
+gap), and draft (unpublished) methodology wording.
+
 ---
 
 ## 1. Purpose
@@ -1407,6 +1418,73 @@ integration must either (a) restrict published historical equity-attributable pr
 period where coverage is adequate, with the restriction stated prominently in the UI, or (b) find
 and integrate a source of pre-2000 equity intervals this workbook does not contain — a decision
 for a human reviewer, not made here.
+
+### 15.11 Publication-window and coverage-policy checkpoint (v2.7, 2026-09-09) — POLICY PENDING
+
+`etl/equity_publication_window.py` computes the evidence a human reviewer needs to set a
+publication window and coverage rules; **it does not set them**. See
+`etl/equity_publication_window_report.md` for the full run (candidate-window statistics for seven
+start dates, stability thresholds, breach-cause analysis, and an assessment of four candidate
+policies). **No publication start date is approved by this section.** The specific date remains
+whatever the reviewer decides after reading that report — this spec does not anticipate it.
+
+**Stability thresholds found** (first month after which coverage never again falls below the
+threshold, per stream): the last stream to stabilize at the 95% level is condensate, at 2013-03 —
+meaning a single fixed start date chosen for *all four streams together* cannot be earlier than
+2013-03 without reintroducing a below-95% month in at least one stream. Oil and associated gas
+never reach a state of "never again below 99%" even in the most recent observed data, because
+`MURLACH [pt of MARNOCK-SKUA]`'s ongoing future-only exclusion (section 15.10) keeps trimming a
+small amount of oil/associated-gas coverage in the most recent months for as long as that
+field remains unresolved.
+
+**Breach cause, confirmed at threshold-stability precision, not just qualitatively**: of the
+months below 95% coverage (any stream, any candidate window), `pre_equity_history` is the
+dominant excluded category by a wide margin (405/419 oil months, 276/293 dry-gas months,
+402/406 associated-gas months, 264/293 condensate months) — confirming section 15.10's
+conclusion that the coverage gap is structural and source-driven, not a matching, boundary, or
+quarantine artifact.
+
+**Candidate policies A–D were assessed** (comparability, risk of misleading, implementation
+complexity, transparency, investor-relations suitability); **Policy D (fixed start date + retained
+monthly `coverage_pct` + a warning threshold within the published window) is recommended** over a
+dynamic threshold (Policy B, rejected: makes the published set unstable between builds) and over
+publishing the full series with only a coverage label (Policy C, rejected: a coverage_pct label
+does not make a 0–10%-covered decade analytically usable, and this project should not invite that
+misread). This recommendation is **subject to review**, not adopted by this section.
+
+**MURLACH**: a focused source review (full production and equity row dump in the report) confirms
+section 15.10's finding with more detail. `MURLACH [pt of MARNOCK-SKUA]` began producing per PPRS
+only in 2025-09 — a very recently started sub-unit. Its only two equity rows (BP 80%, NEO ENERGY
+20%) share an identical, unexplained start date of 2050-01-04, with no prior record under that
+name. The related `MARNOCK [pt. of MARNOCK-SKUA]` entry is a **separate field** in the source with
+its own complete, current, non-future ownership history (currently 100% BP EXPLORATION OPERATING
+COMPANY LIMITED since 2017-03-31) — the source provides no explicit link between the two.
+**Working hypothesis, not a finding**: MURLACH's very recent first-production date is consistent
+with the 2050 date being an un-updated placeholder rather than a literal scheduled transfer, but
+this is speculation and is explicitly not acted on. **MURLACH remains future-only and unresolved.**
+No alias or inherited ownership was applied.
+
+**Pre-2000 source inventory**: a bounded web search (two queries, logged in the report) found no
+distinct, citable, field-level dated-equity dataset for the pre-2000 UKCS at the
+percentage-and-effective-date grain this project needs. The NSTA licence/licence-block datasets
+already identified in section 15.1 as company-name-history sources were confirmed (not merely
+assumed) to be licence-level, not equity-percentage-level, and therefore unable to close this gap.
+One unverified lead (a withdrawn GOV.UK "field data" page) was found and logged but not pursued —
+assessing it further is ingestion-adjacent work outside this checkpoint's scope. **No pre-2000
+source was ingested, merged, or scraped into the model.**
+
+**Draft methodology wording** for eventual publication is in the report (section 7 of
+`etl/equity_publication_window_report.md`), covering source identity (both the "Field Partners"
+item title and the NSTA page's "current and historical field equity shares" description),
+half-open month-start resolution, zero-duration and zero-interest row treatment, operator-status
+independence from economic interest, quarantine-not-repair, per-stream coverage, the restricted
+publication window (placeholder pending the actual date), and the gross-equity-share framing. **Not
+written to `methodology.html`.**
+
+**Status: full-history equity coverage is confirmed insufficient for publication from 1975. The
+historical model is validated internally (E1/E4/E5/E7/E8 all pass on the field-months it does
+resolve) but is not yet approved for unattended publication under any window — that approval is
+pending your review of this checkpoint's recommendation.**
 
 ---
 
