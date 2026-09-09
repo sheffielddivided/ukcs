@@ -60,6 +60,44 @@ Summary of corrections:
 - Section 15.5's 2%-unmatched-production tolerance is corrected to apply against production
   across **all fields with production history**, not the latest-period field set.
 
+### 0.2 What changed in v2.3
+
+Sections 15.1, 15.2 and 15.5 have been corrected against live discovery and field-matching runs
+for Phase 2 milestones 1 and 2 (`etl/equity_fetch.py`, `etl/equity_parse.py`,
+`etl/equity_match.py`). See `etl/equity_schema_report.md` and
+`etl/equity_field_matching_report.md` for the full evidence.
+
+Summary of corrections:
+
+- **No dataset titled "Field Equity Shares" exists.** Section 15.1's assumption of two separate
+  NSTA datasets (a time-series "Field Equity Shares" source and a snapshot-only "Field Partners"
+  source) was wrong. There is only one live dataset, an ArcGIS item titled **"Field Partners"**,
+  which the NSTA Fields page describes as *"Current and historical field equity shares"*. Its
+  content is full interval history back to 1968, not a snapshot. Section 15.1 no longer
+  characterises this workbook as a present-day snapshot, and records source identity using both
+  the item title and the page description rather than assuming one name is authoritative.
+- **Acquisition is a two-hop resolution, not a single-page scrape** (section 15.2): NSTA page ->
+  ArcGIS Hub search page (client-rendered, no scrapeable link) -> ArcGIS Online search API scoped
+  to org `OZMfUznmLTnWccBc` -> resolved item -> direct `.xlsx` URL on Azure Blob Storage.
+- **`COLUMBA BD` corrected to `COLUMBA B/D`** (with a slash) — the actual current, post-merge PPRS
+  field name (section 15.5).
+- **Both rename cases (`SEAN`/`NORTH SEAN`, `COLUMBA B`/`COLUMBA B/D`) are checked and resolved**:
+  neither needs an alias row. The PPRS field universe used for matching is already
+  rename-consolidated, and the equity workbook independently uses the current name for each
+  field's full history.
+- **No sentinel (`1900-01-01`-style) start dates exist in the live workbook**, contradicting the
+  assumption drawn from the archived 2014-2020 file. Detection logic is retained defensively.
+- **Two new data anomalies found, not yet resolved**: 4 rows with future start dates (2030, 2050)
+  and 838 rows with a zero-duration interval (`start_date == end_date`) — far more than the single
+  example noted during milestone 1's spot-check. Both are carried forward for the interval-join
+  step (15.8 step 4); section 15.4's proposed `E7` rule (`start_date < end_date`, strict) would
+  fail all 838 as currently worded.
+- Field-name matching (milestone 2) achieved 500/552 exact matches (90.6% field-count coverage)
+  and **100% production-weighted coverage** on the latest period across all four streams (oil, dry
+  gas, associated gas, condensate) — comfortably inside the 2% unmatched-production threshold. See
+  `etl/equity_field_matching_report.md` for the full unmatched-field lists and the structural
+  (non-naming) mismatches investigated and left unmatched rather than guessed at.
+
 ---
 
 ## 1. Purpose
@@ -524,7 +562,8 @@ audience, an undocumented boe conversion is worse than no boe figure at all.
       "layer_max_record_count": 0
     },
     "equity": {
-      "dataset": "NSTA Field Equity Shares",
+      "source_item_title": "Field Partners",
+      "source_page_description": "Current and historical field equity shares",
       "page_url": "https://www.nstauthority.co.uk/data-and-insights/data/themes/fields/",
       "resolved_file_url": "<resolved at build time>",
       "file_sha256": "...",
@@ -800,23 +839,45 @@ the headline company figure.
 
 ### 15.1 Source selection
 
-**Primary source: NSTA "Field Equity Shares".**
+**Primary source: the item titled "Field Partners".**
 
-The NSTA publishes a dataset described as *current and historical field equity shares*, updated
-weekly, on its Fields data theme page. This is the correct source. It supersedes the Field
-Partners dataset proposed in specification v1.0.
+**Correction (v2.3, milestone 1 live investigation, 2026-09-09):** Specification v2.2 and
+earlier assumed two separate NSTA datasets existed — a time-series "Field Equity Shares"
+dataset (the correct primary source) and a present-day-only "Field Partners" snapshot
+(forbidden for time series, cross-check only). Live investigation found this to be wrong.
+There is no dataset titled "Field Equity Shares" anywhere in the NSTA ArcGIS Online
+organisation (`OZMfUznmLTnWccBc`, `orgUrlKey: ukcs-transition`) — searching that org for the
+exact phrase "field equity shares" returns zero results. The NSTA Fields data theme page's own
+link, labelled **"Current and historical field equity shares"**, resolves (via an ArcGIS Hub
+search redirect, not a direct file link) to a single ArcGIS item titled **"Field Partners"**
+(item id `40fb75005dca48e886891350da9dedd8`), whose `url` property is a direct `.xlsx` download.
 
-Field Partners is a **snapshot** of present-day partners in producing fields. Multiplying today's
-equity by historical production reproduces exactly the retrospective-attribution error described
-in section 6.1, but worse — equity changes hands more frequently than operatorship. Field
-Partners must not be used for time series. It may be used only as a cross-check on the latest
-period.
+The workbook's actual content does not match the "present-day snapshot" description. It contains
+full historical validity intervals: 7,683 rows as of 2026-09-09, start dates back to 1968-08-01,
+and 277 distinct "Equity Share Time Period" labels (e.g. `Previous-2005 to 2020`, `Current`).
+This is the dataset structure section 15.1 originally required of "Field Equity Shares", just
+published under the "Field Partners" item title.
 
-An archived earlier release of the Field Equity Shares workbook (covering 2014–2020) confirms the
-required structure: each row carries an interest percentage, a **start date** and an **end date**.
-Records run back to the late 1960s, and transactions are visible in the data — for example an
-84.11% interest running from February 1978 to October 2016, and groups of partner rows all
-terminating on a common date as an interest changes hands.
+**This is the one and only live source used from here on.** Do not infer snapshot-only behaviour
+from the item title — the title is a publisher naming choice, not a description of the data's
+temporal scope, and has been checked directly against the live file's contents. Record source
+identity using **both** names, since they answer different questions and neither alone is
+sufficient provenance:
+
+- source item title (as recorded in ArcGIS Online): **"Field Partners"**
+- source-page description (as written on the NSTA Fields page): **"Current and historical field
+  equity shares"**
+
+If NSTA ever publishes a distinct item actually titled "Field Equity Shares" in the same org,
+treat that as a new discovery requiring the same live-structure verification as this one — do not
+assume it supersedes this source without checking its contents first.
+
+An archived earlier release of this workbook (covering 2014–2020, then found under the "Field
+Equity Shares" description) confirms the same interval structure: each row carries an interest
+percentage, a **start date** and an **end date**. Records run back to the late 1960s, and
+transactions are visible in the data — for example an 84.11% interest running from February 1978
+to October 2016, and groups of partner rows all terminating on a common date as an interest
+changes hands.
 
 This validity-period structure is what makes a historically correct equity series possible.
 
@@ -841,13 +902,22 @@ interest in the whole field applied to the production-only volume.
 
 ### 15.2 Acquisition — this source is more fragile than the ArcGIS services
 
-Field Equity Shares is an Excel workbook published on a web page, not a REST endpoint. The
-archived file's URL embeds a date, which implies the filename changes on republication.
+The equity workbook is an Excel file published on a web page, not a REST endpoint. The archived
+file's URL embeds a date, which implies the filename changes on republication.
+
+**Correction (v2.3):** the acquisition path is not a single-page scrape to a direct file link.
+Live investigation found it is a two-hop resolution: the NSTA Fields data theme page links to an
+ArcGIS Hub *search* page (a client-rendered SPA with no server-side link to scrape), which must be
+resolved via the ArcGIS Online search API, scoped to org `OZMfUznmLTnWccBc`, using the search term
+embedded in the Hub URL's `q` parameter. The matched item's `url` property is the actual direct
+`.xlsx` download, hosted on Azure Blob Storage (`datanstauthority.blob.core.windows.net`), not on
+`nstauthority.co.uk`. `etl/equity_fetch.py` implements this two-hop resolution and requires
+exactly one ArcGIS search result, refusing to guess between multiple candidates.
 
 Requirements for `etl/equity_fetch.py`:
 
-- Scrape the NSTA Fields data theme page for the Field Equity Shares link. Do **not** hardcode
-  the file URL.
+- Scrape the NSTA Fields data theme page for the equity-shares link (see the two-hop resolution
+  above). Do **not** hardcode the file URL.
 - If no matching link is found, **fail the build** with an explicit message naming the page.
   Never fall back to a cached copy silently.
 - Persist the resolved URL, HTTP `Last-Modified`, and a SHA-256 of the file bytes into
@@ -940,13 +1010,24 @@ historical volume from the coverage check.
 
 **Rename cases need both names checked (v2.2).** Section 7.2 found two fields whose reporting
 unit was renamed partway through history with non-overlapping periods: `SEAN` → `NORTH SEAN`
-(transition 201704/201705) and `COLUMBA B` → `COLUMBA BD` (transition 200006/200007). If the
-equity workbook uses the pre-rename name for the pre-rename period (plausible, since equity
-records run back further than some of these renames), a name matcher keyed only on the current
-`FIELDNAME` will silently fail to match the earlier interval. Check both the current and
-historical name for every renamed field found in section 7.2 before finalising the alias file
-below, and add explicit rows to `field_aliases.csv` for both directions if the workbook does use
-the old names.
+(transition 201704/201705) and `COLUMBA B` → `COLUMBA BD` (transition 200006/200007; the current,
+post-merge PPRS field name is `COLUMBA B/D`, with a slash — earlier drafts of this spec wrote
+`COLUMBA BD` without one, which was imprecise). If the equity workbook uses the pre-rename name
+for the pre-rename period (plausible, since equity records run back further than some of these
+renames), a name matcher keyed only on the current `FIELDNAME` will silently fail to match the
+earlier interval. Check both the current and historical name for every renamed field found in
+section 7.2 before finalising the alias file below, and add explicit rows to `field_aliases.csv`
+for both directions if the workbook does use the old names.
+
+**Checked, resolved (v2.3, milestone 2, 2026-09-09):** both cases were verified against the live
+equity workbook. Neither needs an alias row. The PPRS field universe used for matching
+(`docs/data/history/index.json`) is already the section 7.2 rename-consolidated view — it exposes
+only the current, merged names (`NORTH SEAN`, `COLUMBA B/D`), not the raw pre-rename PPRS
+`FIELDNAME` values. The equity workbook independently uses the same current names for the full
+history of both fields: `NORTH SEAN` rows start as early as 1984-03-21 (well before the
+201704/201705 transition) and `COLUMBA B/D` rows start as early as 2002-12-16 (before the
+200006/200007 transition). Both matched by exact string match with no alias needed. See
+`etl/equity_field_matching_report.md` for the full matching output.
 
 Unmatched fields go to `etl/mappings/field_aliases.csv`, hand-maintained and committed, with
 columns `pprs_field_name,equity_field_name,note,reviewed_by,reviewed_on`. The ETL prints every
