@@ -37,10 +37,9 @@ from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
 
-if __name__ == "__main__":
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from etl.equity_parse import DEFAULT_WORKBOOK_PATH, load_workbook_sheet, parse_equity_workbook, read_header
+from equity_parse import DEFAULT_WORKBOOK_PATH, load_workbook_sheet, parse_equity_workbook, read_header
 
 DIAGNOSTICS_REPORT_PATH = Path(__file__).parent / "equity_interval_diagnostics_report.md"
 

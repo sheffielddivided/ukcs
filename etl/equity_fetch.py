@@ -66,10 +66,14 @@ class EquityFetchError(RuntimeError):
     Message must say exactly why. Never falls back to a cached copy."""
 
 
-def find_equity_link(html: str, page_url: str) -> str:
+def find_equity_link_and_description(html: str, page_url: str) -> tuple[str, str]:
     """Find the anchor on the NSTA Fields page whose visible text mentions
-    'equity', and return its href resolved against page_url. Fails loudly
-    if none or more than one are found, rather than guessing."""
+    'equity', and return (source_page_description, resolved_href). Fails
+    loudly if none or more than one are found, rather than guessing. The
+    visible text (e.g. 'Current and historical field equity shares') is
+    recorded as source-page-description provenance alongside the ArcGIS
+    item title, since section 15.1 established that neither name alone is
+    sufficient provenance for this source."""
     soup = BeautifulSoup(html, "html.parser")
     matches = []
     for a in soup.find_all("a", href=True):
@@ -93,7 +97,13 @@ def find_equity_link(html: str, page_url: str) -> str:
     text, href = matches[0]
     resolved = urllib.parse.urljoin(page_url, href)
     print(f"Found equity link: text={text!r} href={resolved!r}")
-    return resolved
+    return text, resolved
+
+
+def find_equity_link(html: str, page_url: str) -> str:
+    """Backwards-compatible wrapper returning only the resolved href."""
+    _, href = find_equity_link_and_description(html, page_url)
+    return href
 
 
 def extract_hub_search_query(hub_url: str) -> str:
@@ -201,7 +211,7 @@ def fetch_equity_workbook(session: requests.Session | None = None) -> dict:
         raise EquityFetchError(
             f"NSTA Fields page {NSTA_FIELDS_PAGE} returned HTTP {resp.status_code}."
         )
-    hub_search_url = find_equity_link(resp.text, NSTA_FIELDS_PAGE)
+    source_page_description, hub_search_url = find_equity_link_and_description(resp.text, NSTA_FIELDS_PAGE)
     search_query = extract_hub_search_query(hub_search_url)
     item = resolve_workbook_item(search_query, session)
     content, last_modified = download_workbook(item["url"], session)
@@ -209,6 +219,7 @@ def fetch_equity_workbook(session: requests.Session | None = None) -> dict:
 
     return {
         "nsta_page_url": NSTA_FIELDS_PAGE,
+        "source_page_description": source_page_description,
         "hub_search_url": hub_search_url,
         "resolved_item_id": item.get("id"),
         "resolved_item_title": item.get("title"),

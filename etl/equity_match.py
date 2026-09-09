@@ -42,10 +42,9 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-if __name__ == "__main__":
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from etl.equity_parse import DEFAULT_WORKBOOK_PATH, parse_equity_workbook
+from equity_parse import DEFAULT_WORKBOOK_PATH, parse_equity_workbook
 
 HISTORY_INDEX_PATH = Path(__file__).parent.parent / "docs" / "data" / "history" / "index.json"
 FIELDS_GEOJSON_PATH = Path(__file__).parent.parent / "docs" / "data" / "fields.geojson"
@@ -295,7 +294,7 @@ def zero_interest_rows_with_operator_flag(workbook_path: Path = DEFAULT_WORKBOOK
     which deliberately does not carry Operator Flag) to find zero-interest
     rows where Operator Flag = 'Y' - an edge case flagged for the interval
     join review, not resolved here."""
-    from etl.equity_parse import load_workbook_sheet, read_header
+    from equity_parse import load_workbook_sheet, read_header
 
     ws = load_workbook_sheet(workbook_path)
     col_index = read_header(ws)

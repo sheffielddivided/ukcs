@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Methodology &mdash; UKCS Oil &amp; Gas Production Explorer</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <style>
+    main { max-width: 46rem; margin: 0 auto; padding: 1.5rem; line-height: 1.55; }
+    main h2 { margin-top: 2rem; }
+    main code { background: rgba(127,127,127,0.15); padding: 0.1em 0.3em; border-radius: 3px; }
+    main table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    main th, main td { border: 1px solid rgba(127,127,127,0.4); padding: 0.4rem 0.6rem; text-align: left; }
+    main .not-yet { opacity: 0.8; font-style: italic; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>UKCS Oil &amp; Gas Production Explorer</h1>
+    <span class="subtitle">North Sea Transition Authority open data &mdash; not an official NSTA product</span>
+  </header>
+
+  <main>
+    <h1>Methodology</h1>
+    <p><a href="./index.html">&larr; Back to the explorer</a></p>
+
+    <h2>Production data</h2>
+    <p>
+      Field and operator production figures come from NSTA's "UKCS hydrocarbon field production
+      reports PPRS points" dataset, rebuilt weekly. Storage volumes (e.g. Rough) and reporting-unit
+      renames are explicitly separated from production totals, never silently merged. See
+      <a href="./data/meta.json">data/meta.json</a> for the exact source, resolved service URL, and
+      build timestamp behind the figures currently on the site.
+    </p>
+
+    <h2>Equity-attributable production</h2>
+    <p class="not-yet">
+      Equity-attributable production is calculated by the weekly build (see
+      <a href="./data/equity/meta.json">data/equity/meta.json</a> for the current build's figures)
+      but is <strong>not yet shown anywhere in this site's charts or controls</strong> &mdash; that
+      is a separate, not-yet-started step. This page documents the methodology behind the
+      artifacts that already exist, ahead of that integration.
+    </p>
+
+    <h3>Source</h3>
+    <p>
+      Equity-attributable production is calculated from the NSTA dataset whose ArcGIS item is
+      titled <strong>&ldquo;Field Partners&rdquo;</strong>. The NSTA Fields data theme page
+      describes this same dataset as
+      <strong>&ldquo;Current and historical field equity shares&rdquo;</strong>. Both names are
+      recorded as provenance in every build (<code>source_item_title</code> and
+      <code>source_page_description</code> in <code>data/equity/meta.json</code>): the item title
+      is a publisher naming choice, not a description of the data's temporal scope, and the
+      workbook's actual content &mdash; dated ownership intervals back to the late 1960s &mdash;
+      has been verified directly rather than assumed from either name. Contains information
+      provided by the North Sea Transition Authority and/or other third parties &mdash; see the
+      attribution notice in this site's footer and <a href="../ATTRIBUTION.md">ATTRIBUTION.md</a>.
+    </p>
+
+    <h3>Interval resolution</h3>
+    <p>
+      Ownership is resolved once per calendar month, at the first day of the month
+      (&ldquo;month-start&rdquo;), using half-open intervals: an interest is active for a given
+      month if <code>start_date &lt;= month_start &lt; end_date</code>. An open (blank) end date
+      means the interest is still current. Ownership changing mid-month is attributed entirely to
+      whichever interest was in force on day 1 of that month &mdash; never prorated.
+    </p>
+
+    <h3>Zero-duration and zero-interest rows</h3>
+    <p>
+      A non-trivial share of source rows record an identical start and end date. These are
+      retained as source records but are never treated as an active ownership interval for any
+      month &mdash; a zero-duration interval cannot satisfy the half-open test above for any
+      month-start. Separately, some rows record a company's involvement in a field with a recorded
+      interest of 0%. These are also retained as source records but contribute no
+      equity-attributable production, since production multiplied by a 0% share is 0 regardless of
+      the row's other attributes.
+    </p>
+
+    <h3>Operator status</h3>
+    <p>
+      The source separately records which company operates a field (<code>operator_flag</code> in
+      the field artifacts). Operator status does <strong>not</strong> imply a positive economic
+      interest &mdash; a substantial share of 0%-interest rows belong to the recorded operator.
+      Operator status is never used as a proxy for ownership.
+    </p>
+
+    <h3>Unresolved field-months</h3>
+    <p>
+      Where a field's ownership records for a given month cannot be resolved cleanly &mdash; most
+      commonly because two records genuinely overlap and together claim more than 100% of the
+      field &mdash; that field-month is excluded from the calculation entirely, not repaired,
+      normalised back to 100%, or resolved by preferring one recorded owner over another. This is
+      reported in <a href="./data/equity/anomalies.json">data/equity/anomalies.json</a>, not
+      silently absorbed into any total.
+    </p>
+
+    <h3>Coverage</h3>
+    <p>
+      Coverage is measured and shown separately for each production stream (oil, dry gas,
+      associated gas, condensate) as the share of that stream's total reported field production
+      for which ownership was cleanly resolved that month. Streams are never combined into a
+      single boe/d figure.
+    </p>
+
+    <h3>Publication window</h3>
+    <p>
+      Equity ownership records are not evenly available across the production history this site
+      otherwise covers back to 1975. Coverage in earlier years is materially incomplete &mdash; the
+      underlying NSTA equity dataset was not populated retroactively to most fields' actual
+      production start dates. Equity-attributable production is therefore published only from
+      <strong>March 2013</strong> onward &mdash; the earliest month for which coverage was verified
+      to be consistently high across a stable multi-year run, not merely high in one good year.
+    </p>
+    <table>
+      <tr><th>Rule</th><th>Value</th></tr>
+      <tr><td>Fixed publication start</td><td><code>2013-03</code></td></tr>
+      <tr><td>Minimum coverage to publish a stream-month</td><td>95%</td></tr>
+      <tr><td>Coverage below which a warning is shown</td><td>99.5%</td></tr>
+    </table>
+    <p>
+      A stream-month below the 95% threshold is never shown as zero &mdash; it is represented
+      explicitly as unavailable, with its coverage percentage and exclusion reasons preserved, so a
+      chart shows a gap rather than a misleading flat line. These thresholds apply separately by
+      production stream, never as a single combined figure. The publication start date does not
+      move automatically in later builds; changing it requires an explicit methodology decision and
+      an accompanying test update (see <code>etl/equity_config.py</code>).
+    </p>
+
+    <h3>MURLACH [pt of MARNOCK-SKUA] &mdash; known limitation</h3>
+    <p>
+      This field's only recorded equity rows have an unexplained start date of 2050-01-04. No
+      authoritative evidence links its ownership to the related but distinct
+      <code>MARNOCK [pt. of MARNOCK-SKUA]</code> entry in the source, so none is assumed. MURLACH is
+      excluded from equity-attributable totals until this is resolved by better source evidence;
+      its excluded production is included in stream coverage calculations and fully documented in
+      <code>data/equity/anomalies.json</code>.
+    </p>
+
+    <h3>No parent-company rollup</h3>
+    <p>
+      Every company name in the equity artifacts is the legal entity exactly as recorded by NSTA in
+      the source workbook. There is no mapping to a current corporate parent or group, and
+      similarly-named entities (e.g. two subsidiaries of the same group) are never merged.
+    </p>
+
+    <h3>What this figure is not</h3>
+    <p>
+      Equity-attributable production is a <strong>gross equity share of reported field
+      production</strong> &mdash; the field's reported volume multiplied by each company's recorded
+      ownership percentage for that month. It is <strong>not</strong> net production, working-interest
+      production, or entitlement production: it carries no adjustment for royalty, tax, or any
+      other entitlement mechanism, and should not be read as a substitute for those figures.
+    </p>
+
+    <h2>Known limitation, both datasets</h2>
+    <p>
+      Every check in this project's build is an internal-consistency check against the data it
+      received from NSTA &mdash; paginated correctly, counted correctly, internally coherent. None
+      of them can independently verify that what NSTA served was itself complete. A service
+      returning a dataset that is internally consistent but silently incomplete is not detectable
+      by this pipeline. This is an open, unmitigated gap for both the production and equity
+      sources, not a solved one.
+    </p>
+  </main>
+
+  <footer>
+    <div id="footer-attribution">
+      Contains information provided by the North Sea Transition Authority and/or other third
+      parties. <a href="https://www.nstauthority.co.uk/site-tools/terms-and-conditions/" target="_blank" rel="noopener">NSTA terms and conditions</a>.
+    </div>
+  </footer>
+</body>
+</html>

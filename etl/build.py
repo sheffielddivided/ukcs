@@ -57,6 +57,17 @@ from validate import (  # noqa: E402
     validate_schema,
     validate_unit_classification_tripwire,
 )
+from equity_artifacts import (  # noqa: E402
+    EquityBuildError,
+    build_anomalies,
+    build_company_artifacts,
+    build_field_artifacts,
+    build_index,
+    build_meta as build_equity_meta,
+    build_publication_status_by_period_stream,
+    run_equity_pipeline,
+    write_equity_artifacts,
+)
 
 ITEM_ID_POINTS = "dd38204275a04618ab7ddd00f87224e3"
 DATASET_NAME = "UKCS hydrocarbon field production reports PPRS points (WGS84)"
@@ -83,6 +94,7 @@ NSTA_RECONCILIATION_NOTE = (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS_DATA_DIR = REPO_ROOT / "docs" / "data"
 UNIT_CLASSIFICATION_PATH = REPO_ROOT / "etl" / "mappings" / "unit_classification.csv"
+EQUITY_DATA_DIR = DOCS_DATA_DIR / "equity"
 
 OUT_FIELDS = (
     "OBJECTID,FIELDNAME,FIELDAREA,LOCATION,ORGGRPNM,UNITNAME,UNITTYPDES,"
@@ -353,18 +365,44 @@ def main() -> int:
             f"{'SPLIT into operators/*.json' if operators_split else 'single operators.json file'}"
         )
 
-        # --- Extension point for Phase 2 (spec 15.8) ---
-        # Equity fetch/parse/join slots in HERE: after history is
-        # aggregated (equity needs field-grain production, already built
-        # above) and BEFORE the meta dict and write block below, matching
-        # this function's existing shape (fetch+aggregate everything,
-        # THEN validate everything, THEN write everything atomically).
-        # validate_equity.py's E1-E9 checks join the other validate_*
-        # calls above this comment, before any write happens. The equity
-        # artifacts (docs/data/equity/*, docs/data/unmatched.json) join
-        # the write block below, and "sources": {"equity": {...}} joins
-        # the meta dict already sized for it (spec 9.1's example includes
-        # it). No restructuring should be needed - only insertion.
+        # --- Phase 2 equity (spec 15.8 steps 5-6, restricted publication
+        # window per section 15.11): fetch, parse, match, full historical
+        # resolve, restrict to EQUITY_PUBLICATION_START onward, validate.
+        # Uses history_per_slug/history_index already built above - no
+        # disk read of docs/data/history/* (those files may still be the
+        # PREVIOUS build's content at this point; the in-memory objects
+        # are this run's authoritative data). Raises EquityBuildError
+        # (caught below, alongside the production pipeline's exceptions)
+        # on any failure - if equity fails, nothing is written, including
+        # the production artifacts, so a failed equity refresh can never
+        # publish alongside stale-but-passing production data or vice
+        # versa (spec 15.11: "the entire build must fail").
+        previous_equity_meta = None
+        previous_equity_meta_path = EQUITY_DATA_DIR / "meta.json"
+        if previous_equity_meta_path.exists():
+            with open(previous_equity_meta_path, encoding="utf-8") as f:
+                previous_equity_meta = json.load(f)
+
+        equity_result = run_equity_pipeline(
+            history_per_slug, history_index, session, previous_equity_meta=previous_equity_meta
+        )
+        equity_status_by_period_stream = build_publication_status_by_period_stream(equity_result["monthly_data"])
+        equity_company_docs = build_company_artifacts(equity_result["resolved_rows"], equity_status_by_period_stream)
+        equity_field_docs = build_field_artifacts(
+            equity_result["field_match_index"],
+            equity_result["raw_rows_by_equity_field"],
+            equity_result["published"],
+        )
+        equity_index = build_index(equity_company_docs)
+        equity_anomalies = build_anomalies(equity_result)
+        equity_built_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        equity_meta = build_equity_meta(equity_result, equity_company_docs, equity_field_docs, equity_built_at)
+        print(
+            f"Equity pipeline: {equity_meta['matched_field_count']} matched fields, "
+            f"{equity_meta['unmatched_field_count']} unmatched, "
+            f"{equity_meta['legal_entity_count']} legal entities, "
+            f"published {equity_meta['earliest_published_period']}-{equity_meta['latest_published_period']}"
+        )
 
         previous_meta = load_previous_meta()
         delta_notes = check_against_previous_build(
@@ -386,7 +424,19 @@ def main() -> int:
                     "item_id": ITEM_ID_POINTS,
                     "service_url": service_url,
                     "layer_max_record_count": max_record_count,
-                }
+                },
+                "equity": {
+                    "publisher": PUBLISHER,
+                    "source_item_title": equity_meta["source_item_title"],
+                    "source_page_description": equity_meta["source_page_description"],
+                    "resolved_workbook_url": equity_meta["resolved_workbook_url"],
+                    "last_modified": equity_meta["last_modified"],
+                    "sha256": equity_meta["sha256"],
+                    "publication_start": equity_meta["publication_start"],
+                    # Full detail (per-company, per-field, anomalies) lives in
+                    # docs/data/equity/meta.json - this is a summary pointer,
+                    # not a duplicate of that file.
+                },
             },
             "latest_period": latest_period,
             "earliest_period": earliest_period,
@@ -394,7 +444,7 @@ def main() -> int:
             "field_count_raw": agg_stats["raw_field_count"],
             "reporting_unit_count": agg_stats["production_unit_count"],
             "storage_unit_count": agg_stats["storage_unit_count"],
-            "company_count": None,
+            "company_count": equity_meta["legal_entity_count"],
             "record_count": len(rows),
             "history_record_count": len(history_rows),
             "history_field_count": history_stats["field_with_history_count"],
@@ -406,7 +456,7 @@ def main() -> int:
             "notes": notes,
         }
 
-    except (ArcGISError, ValidationError, BuildError, ValueError) as e:
+    except (ArcGISError, ValidationError, BuildError, EquityBuildError, ValueError) as e:
         print(f"\nBUILD FAILED: {e}", file=sys.stderr)
         return 1
 
@@ -418,6 +468,11 @@ def main() -> int:
     write_json_atomic(DOCS_DATA_DIR / "meta.json", meta)
     write_json_atomic(DOCS_DATA_DIR / "fields.geojson", fields_geojson)
     write_history_dir_atomic(DOCS_DATA_DIR / "history", history_per_slug, history_index)
+    write_equity_artifacts(EQUITY_DATA_DIR, equity_meta, equity_index, equity_company_docs, equity_field_docs, equity_anomalies)
+    print(
+        f"Wrote {EQUITY_DATA_DIR} ({len(equity_company_docs)} company files, "
+        f"{len(equity_field_docs)} field files)"
+    )
 
     operators_doc = {
         "generated_from": GENERATED_FROM_OPERATOR,

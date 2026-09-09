@@ -38,12 +38,11 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
-if __name__ == "__main__":
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from etl.equity_interval_diagnostics import classify_zero_duration_rows, load_raw_rows
-from etl.equity_join import build_field_match_index, resolve_field_month
-from etl.equity_match import (
+from equity_interval_diagnostics import classify_zero_duration_rows, load_raw_rows
+from equity_join import build_field_match_index, resolve_field_month
+from equity_match import (
     FIELD_ALIASES_PATH,
     PRODUCTION_STREAMS,
     load_field_aliases,

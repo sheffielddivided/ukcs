@@ -68,6 +68,19 @@ jobs:
       - name: Run build
         run: python etl/build.py
 
+      - name: Upload raw equity workbook
+        # spec section 15.2: keep the raw workbook traceable for at least
+        # 90 days so a disputed equity number can be traced to the exact
+        # input file, independent of git history (etl/.cache/ is
+        # gitignored, never committed).
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: equity-workbook-${{ github.run_id }}
+          path: etl/.cache/equity_workbook.xlsx
+          retention-days: 90
+          if-no-files-found: ignore
+
       - name: Check for a substantive data change
         id: changes
         # meta.json's built_at changes on every successful build even
@@ -79,8 +92,25 @@ jobs:
         # logic was verified locally against two consecutive real builds
         # with unchanged upstream data before being put here - see the
         # step 8 build report.
+        #
+        # PPRS and equity are independent upstream sources (equity is
+        # updated weekly by NSTA independently of PPRS - spec section
+        # 15.2), so each is diffed separately: a substantive change in
+        # either is enough to trigger a commit, and the commit message
+        # names which source(s) actually changed rather than always
+        # saying "NSTA refresh".
         run: |
-          if git diff --quiet -- docs/data/fields.geojson docs/data/history docs/data/operators.json docs/data/operators; then
+          PPRS_CHANGED=false
+          EQUITY_CHANGED=false
+          if ! git diff --quiet -- docs/data/fields.geojson docs/data/history docs/data/operators.json docs/data/operators; then
+            PPRS_CHANGED=true
+          fi
+          if ! git diff --quiet -- docs/data/equity; then
+            EQUITY_CHANGED=true
+          fi
+          echo "pprs_changed=$PPRS_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "equity_changed=$EQUITY_CHANGED" >> "$GITHUB_OUTPUT"
+          if [ "$PPRS_CHANGED" = false ] && [ "$EQUITY_CHANGED" = false ]; then
             echo "No substantive data change (only built_at would differ) - reverting meta.json, skipping commit."
             git checkout -- docs/data/meta.json
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -88,17 +118,19 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Phase 2 (spec 15.8) will add docs/data/equity/* and
-      # docs/data/unmatched.json here and to the diff check above, and a
-      # step to upload the raw equity workbook as a build artifact
-      # (retention 90 days, spec 15.2) between "Run build" and this step.
-
       - name: Commit and push
         if: steps.changes.outputs.changed == 'true'
         run: |
           LATEST_PERIOD=$(python3 -c "import json; print(json.load(open('docs/data/meta.json'))['latest_period'])")
+          if [ "${{ steps.changes.outputs.pprs_changed }}" = "true" ] && [ "${{ steps.changes.outputs.equity_changed }}" = "true" ]; then
+            MSG="data: refresh NSTA PPRS and equity shares (period ${LATEST_PERIOD})"
+          elif [ "${{ steps.changes.outputs.equity_changed }}" = "true" ]; then
+            MSG="data: refresh NSTA equity shares"
+          else
+            MSG="data: NSTA refresh, period ${LATEST_PERIOD}"
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/data
-          git commit -m "data: NSTA refresh, period ${LATEST_PERIOD}"
+          git commit -m "$MSG"
           git push

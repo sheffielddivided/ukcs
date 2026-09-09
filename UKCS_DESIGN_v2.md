@@ -207,6 +207,17 @@ stabilizing at 2013-03), the recommended-but-unadopted Policy D, the deeper MURL
 speculation, not fact), the bounded pre-2000 source search (nothing found that would close the
 gap), and draft (unpublished) methodology wording.
 
+### 0.7 What changed in v2.8
+
+Section 15.11's policy is **approved and settled** (Policy D, fixed start `2013-03`, 95%/99.5%
+thresholds, applied separately by stream, MURLACH excluded). Section 15.12 (new) records the
+unattended build integration: `etl/equity_artifacts.py` is wired into `etl/build.py`, generating
+deterministic `docs/data/equity/*` artifacts (`meta.json`, `index.json`, `companies/*.json`,
+`fields/*.json`, `anomalies.json`) on every weekly build, validated build-breaking (source
+integrity, E1, E4, E5, E7, E8, coverage policy, artifact conservation) before anything is written.
+`docs/methodology.html` documents the approved policy. **The frontend is unchanged** — no equity
+charts, controls, or company-equity view exist yet; that is a separate, not-yet-approved step.
+
 ---
 
 ## 1. Purpose
@@ -1316,11 +1327,16 @@ before royalty, tax and any entitlement adjustment, and the methodology page mus
    **Done.** No alias rows were needed (section 15.5).
 4. `etl/equity_join.py` — interval join, latest period only; run E1 and E8. **Stop and report.** —
    **Done.**
-5. Full history join; all validation rules E1–E9 (E2, E3, E6, E9 not yet implemented; out of scope
-   for the diagnostic checkpoints so far). — **Done as a diagnostic checkpoint**
-   (`etl/equity_join_historical.py`). **Not ready for step 6/7 or publication** — see section 15.10.
-6. Company alias reconciliation. — **Not started.**
-7. Artifacts, UI, methodology page. — **Not started.**
+5. Full history join; all validation rules E1–E9 (E2, E3, E6, E9 not yet implemented as
+   standalone checks; E1/E4/E5/E7/E8 are implemented and build-breaking as of step 5's build
+   integration). — **Done.** Diagnosed (`etl/equity_join_historical.py`, section 15.10), a
+   publication window approved (section 15.11), and integrated into the unattended build within
+   that window (`etl/equity_artifacts.py`, section 15.12).
+6. Company alias reconciliation. — **Not started** (deliberately: section 15.12's artifacts use
+   legal-entity names exactly as recorded, no rollup).
+7. Artifacts, UI, methodology page. — **Artifacts and methodology page done** (section 15.12,
+   `docs/methodology.html`). **UI not started** — no equity charts, controls, or company view
+   exist in `docs/index.html` / `docs/app/*` yet.
 
 **Do not proceed past step 4 until E1 and E8 pass on the latest period.** (They do — see section
 0.4.) **Do not proceed past step 5 (to company alias reconciliation or publication) until the
@@ -1419,7 +1435,7 @@ period where coverage is adequate, with the restriction stated prominently in th
 and integrate a source of pre-2000 equity intervals this workbook does not contain — a decision
 for a human reviewer, not made here.
 
-### 15.11 Publication-window and coverage-policy checkpoint (v2.7, 2026-09-09) — POLICY PENDING
+### 15.11 Publication-window and coverage-policy checkpoint (v2.7-v2.8) — POLICY APPROVED (v2.8, 2026-09-09)
 
 `etl/equity_publication_window.py` computes the evidence a human reviewer needs to set a
 publication window and coverage rules; **it does not set them**. See
@@ -1450,7 +1466,7 @@ monthly `coverage_pct` + a warning threshold within the published window) is rec
 dynamic threshold (Policy B, rejected: makes the published set unstable between builds) and over
 publishing the full series with only a coverage label (Policy C, rejected: a coverage_pct label
 does not make a 0–10%-covered decade analytically usable, and this project should not invite that
-misread). This recommendation is **subject to review**, not adopted by this section.
+misread). **Approved (v2.8): Policy D, as recommended.**
 
 **MURLACH**: a focused source review (full production and equity row dump in the report) confirms
 section 15.10's finding with more detail. `MURLACH [pt of MARNOCK-SKUA]` began producing per PPRS
@@ -1485,6 +1501,102 @@ written to `methodology.html`.**
 historical model is validated internally (E1/E4/E5/E7/E8 all pass on the field-months it does
 resolve) but is not yet approved for unattended publication under any window — that approval is
 pending your review of this checkpoint's recommendation.**
+
+### 15.12 Unattended build integration (v2.8, 2026-09-09) — ARTIFACTS PUBLISHED, UI NOT YET
+
+**Approved policy, settled (not subject to change without an explicit methodology decision and a
+test update — see `etl/equity_config.py`):**
+
+| Constant | Value |
+| --- | --- |
+| Publication policy | Policy D (fixed start date + monthly stream-specific coverage) |
+| Fixed publication start | `2013-03` |
+| Minimum coverage to publish a stream-month | 95% |
+| Warning threshold | 99.5% |
+| Thresholds applied | Separately by production stream, never combined |
+| `MURLACH [pt of MARNOCK-SKUA]` | Unresolved, future-only, excluded from totals; included in coverage/anomaly reporting |
+| Start-date movement | Never dynamic — requires an explicit methodology decision and test update |
+
+Equity is now integrated into `etl/build.py` (via `etl/equity_artifacts.py`), inserted at the
+extension point section 15.8 anticipated: after history aggregation, before the meta dict and
+write block, inside the same try/except as the production pipeline. **An equity failure fails the
+whole build and leaves `docs/data/` completely untouched** — verified by a committed atomic-write
+test (`tests/test_equity_artifacts.py::test_atomic_write_never_leaves_target_dir_partially_updated`)
+and by the shared try/except around both pipelines in `build.py`.
+
+**Artifact schema**, all under `docs/data/equity/`:
+
+- `meta.json` — publication policy constants, source provenance (both the item title and the
+  page description, per section 15.1), resolved URL/Last-Modified/SHA-256, row/field/entity
+  counts, build timestamp, methodology version, source limitations (including MURLACH and the
+  standing internally-consistent-but-incomplete-source caveat).
+- `index.json` — per company: slug, name, first/last published period, field count, latest
+  production and coverage status by stream. Deliberately excludes full monthly series to keep
+  startup data small.
+- `companies/{slug}.json` — monthly series per stream, each entry `{value, status, coverage_pct}`
+  with `value` **null, never zero**, when `status` is `unavailable`; contributing field slugs;
+  first/last published period; explicit `"Legal entity as recorded by NSTA"` label.
+- `fields/{slug}.json` — dated ownership intervals (company, interest %, dates, operator flag,
+  status) exactly as recorded; resolution status by published period; excluded periods; field-match
+  method.
+- `anomalies.json` — complete evidence for MURLACH, future-only fields, quarantined overlaps,
+  unresolved gaps, unmatched fields, below-threshold stream-months, and any `start_date > end_date`
+  rows (none found live). Resolved zero-duration rows are not listed individually — only their
+  aggregate classification counts, per the milestone-3/4 categories.
+
+**Live run (2026-09-09)**: 500/552 fields matched (52 unmatched, same set as milestone 2), 292
+legal entities, 491 field files, published `201303`–`202606`. Zero quarantined overlaps, zero
+unresolved gaps, zero `start_date > end_date` violations, zero below-95%-threshold stream-months in
+the published window. `docs/data/equity/` is 13 MB uncompressed (~660 KB gzip-equivalent);
+`index.json` is the largest non-company file at 113 KB. Deterministic rebuild with unchanged
+source input verified byte-identical except `built_at`. Full build runtime (production + equity):
+under 1 minute locally.
+
+**Validation, all build-breaking, implemented in `etl/equity_artifacts.py`:**
+
+- Source integrity: item title drift, fetch/parse failure, and a >10% normalized-row-count change
+  against the previous build's `meta.json` all fail the build (`EQUITY_ROW_COUNT_TOLERANCE_FRACTION`
+  in `etl/equity_config.py`).
+- E1: every resolved field-month sums to 100% ±0.5pp within the published window; any
+  `e1_sum_mismatch` fails the build.
+- E4: quarantine is proven structurally safe rather than asserted — `build_resolved_grain_rows_historical`
+  only ever emits rows for `category == "resolved"`, and the build additionally asserts no
+  quarantined field appears in the resolved rows before writing anything. A quarantine that cannot
+  be proven safe this way would fail the build per the "choose the stricter behaviour" instruction;
+  none has been encountered live.
+- E5: every published field-month's resolution categories are asserted to sum to the total
+  published field-month count before writing (no field-month can silently disappear from
+  classification).
+- E7: `start_date <= end_date` across the full workbook (not period-scoped — a structural property
+  of the source).
+- E8: per-stream, per-month conservation over fully-resolved fields within the published window.
+- Coverage policy: no period before `2013-03` enters the published dataset (asserted, not just
+  filtered); every published value carries `coverage_pct`; `complete`/`warning`/`unavailable`
+  status is set per the approved thresholds.
+- Artifact conservation: company totals equal field-based equity totals (verified live and by a
+  committed test); a deterministic rebuild of unchanged input is byte-identical apart from
+  `built_at`; a failed build leaves the existing `docs/data/` tree completely untouched (writes
+  happen only after every check above passes, mirroring the existing production pipeline's own
+  discipline).
+
+**Weekly build behaviour**: `.github/workflows/build-data.yml` now diffs `docs/data/equity` and the
+production artifacts independently, and the commit message names which source(s) actually changed
+(`data: refresh NSTA equity shares` / `data: refresh NSTA PPRS and equity shares (period …)` /
+the existing PPRS-only message) rather than always saying "NSTA refresh" — the two sources update
+on independent schedules (spec section 15.2) and neither should be silently folded into the other's
+commit. A single commit per run is preserved; the raw equity workbook is uploaded as a 90-day
+GitHub Actions build artifact for traceability (spec section 15.2), separate from git history.
+
+**Not done in this step, deliberately**: no equity charts, controls, or company-equity view were
+added to `docs/index.html` or `docs/app/*` — the frontend is completely unchanged. No company alias
+or parent-group mapping exists; every company name in the published artifacts is the legal entity
+exactly as recorded by NSTA. `docs/methodology.html` exists and documents the approved policy but
+is not yet linked from the main site navigation.
+
+**Status: equity artifacts are live, validated, and committed to the unattended weekly build.**
+Whether they are ready for **frontend integration** (charts, controls, a company-equity view) is a
+separate decision, not addressed by this section — see the recommendation accompanying this
+checkpoint.
 
 ---
 
