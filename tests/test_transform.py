@@ -16,8 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from etl.transform import (  # noqa: E402
     aggregate_history,
     aggregate_latest_period,
+    aggregate_operators,
     build_fields_geojson,
     build_history_artifacts,
+    build_operators_artifacts,
     round3,
     slugify,
 )
@@ -258,3 +260,97 @@ def test_build_history_artifacts_index_first_last_period():
     assert index["buzzard"]["first_period"] == "200001"
     assert index["buzzard"]["last_period"] == "200606"
     assert per_slug["buzzard"]["series"][0]["period"] == "200001"
+
+
+# --- aggregate_operators (spec section 9.4 / 13 step 7) ---
+
+
+def test_operators_sum_multiple_fields_same_operator_same_period():
+    rows = [
+        _hrow("FIELD_A", "FIELD_A", "200606", oil=10.0),
+        _hrow("FIELD_B", "FIELD_B", "200606", oil=5.0),
+    ]
+    # Both fields' most recent (only) period has the same operator.
+    rows[0]["attributes"]["ORGGRPNM"] = "BIG OPERATOR"
+    rows[1]["attributes"]["ORGGRPNM"] = "BIG OPERATOR"
+    histories, _ = aggregate_history(rows, {})
+    operator_histories, stats = aggregate_operators(histories)
+
+    assert stats["operator_count"] == 1
+    op = operator_histories[0]
+    assert op.name == "BIG OPERATOR"
+    assert sorted(op.field_slugs) == ["field-a", "field-b"]
+    assert op.series == [{"period": "200606", "oil_mbd": 15.0, "assoc_gas_mmscfd": 0.0,
+                           "dry_gas_mmscfd": 0.0, "condensate_mbd": 0.0, "water_mbd": 0.0}]
+
+
+def test_operators_inherit_storage_exclusion_from_field_history():
+    """A storage unit excluded from a field's history (section 7.3) must
+    stay excluded once that field's history is rolled up to its
+    operator - the operator aggregation must not re-introduce storage
+    volumes by operating on raw rows instead of the already-filtered
+    FieldHistory series."""
+    rows = [
+        _hrow("ROUGH", "ROUGH PRODUCTION", "200601", dgas=10.0),
+        _hrow("ROUGH", "ROUGH STORAGE", "200601", dgas=999.0),
+    ]
+    classification_map = {("ROUGH", "ROUGH STORAGE"): "storage"}
+    histories, _ = aggregate_history(rows, classification_map)
+    operator_histories, _ = aggregate_operators(histories)
+
+    op = operator_histories[0]
+    assert op.series[0]["dry_gas_mmscfd"] == 10.0
+
+
+def test_operators_different_operators_kept_separate():
+    rows = [
+        _hrow("FIELD_A", "FIELD_A", "200606", oil=10.0),
+        _hrow("FIELD_B", "FIELD_B", "200606", oil=5.0),
+    ]
+    rows[0]["attributes"]["ORGGRPNM"] = "OPERATOR ONE"
+    rows[1]["attributes"]["ORGGRPNM"] = "OPERATOR TWO"
+    histories, _ = aggregate_history(rows, {})
+    operator_histories, stats = aggregate_operators(histories)
+
+    assert stats["operator_count"] == 2
+    by_name = {op.name: op for op in operator_histories}
+    assert by_name["OPERATOR ONE"].series[0]["oil_mbd"] == 10.0
+    assert by_name["OPERATOR TWO"].series[0]["oil_mbd"] == 5.0
+
+
+def test_operators_conservation_total_volume_unchanged():
+    """Summing a value field across every operator-period entry must equal
+    summing it across every field-period entry - attributing fields to
+    operators is a repartition, it must never add or drop volume."""
+    rows = [
+        _hrow("FIELD_A", "FIELD_A", "200601", oil=10.0),
+        _hrow("FIELD_A", "FIELD_A", "200602", oil=12.0),
+        _hrow("FIELD_B", "FIELD_B", "200601", oil=3.0),
+    ]
+    rows[0]["attributes"]["ORGGRPNM"] = "OP1"
+    rows[1]["attributes"]["ORGGRPNM"] = "OP1"
+    rows[2]["attributes"]["ORGGRPNM"] = "OP2"
+    histories, _ = aggregate_history(rows, {})
+    operator_histories, _ = aggregate_operators(histories)
+
+    field_total = sum(p["oil_mbd"] for h in histories for p in h.series)
+    operator_total = sum(p["oil_mbd"] for op in operator_histories for p in op.series)
+    assert field_total == operator_total == 25.0
+
+
+def test_build_operators_artifacts_index_has_latest_not_full_series():
+    rows = [
+        _hrow("FIELD_A", "FIELD_A", "200601", oil=1.0),
+        _hrow("FIELD_A", "FIELD_A", "200602", oil=2.0),
+    ]
+    rows[0]["attributes"]["ORGGRPNM"] = "OP1"
+    rows[1]["attributes"]["ORGGRPNM"] = "OP1"
+    histories, _ = aggregate_history(rows, {})
+    operator_histories, _ = aggregate_operators(histories)
+    index, per_slug = build_operators_artifacts(operator_histories)
+
+    assert index["op1"]["field_count"] == 1
+    assert index["op1"]["latest"]["period"] == "200602"
+    assert "series" not in index["op1"]
+    assert per_slug["op1"]["generated_from"] == "current operator of record"
+    assert [p["period"] for p in per_slug["op1"]["series"]] == ["200601", "200602"]

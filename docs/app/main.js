@@ -4,8 +4,8 @@
 // the browser only ever reads ./data/*, pre-built by etl/build.py.
 import { initMap, filterByOperator } from "./map.js";
 import { renderHistoryCharts } from "./charts.js";
-import { DataLoadError, fetchJson, getFieldHistory } from "./state.js";
-import { formatBuiltAt, formatPeriod, formatPeriodShort } from "./format.js";
+import { DataLoadError, fetchJson, getFieldHistory, getOperatorHistory } from "./state.js";
+import { formatBuiltAt, formatPeriod, formatPeriodShort, slugify } from "./format.js";
 
 const DATA_META_URL = "./data/meta.json";
 const DATA_FIELDS_URL = "./data/fields.geojson";
@@ -28,6 +28,7 @@ function renderFooter(meta) {
 
 function populateOperatorFilter(fieldsGeojson, onChange) {
   const select = document.getElementById("operator-filter");
+  const viewHistoryButton = document.getElementById("view-operator-history");
   const operators = Array.from(
     new Set(
       fieldsGeojson.features
@@ -48,7 +49,10 @@ function populateOperatorFilter(fieldsGeojson, onChange) {
     select.appendChild(option);
   }
 
-  select.addEventListener("change", () => onChange(select.value || null));
+  select.addEventListener("change", () => {
+    onChange(select.value || null);
+    viewHistoryButton.disabled = !select.value;
+  });
 }
 
 function escapeHtml(value) {
@@ -87,11 +91,6 @@ function renderFieldPanelHistory(history) {
   const content = document.getElementById("field-panel-content");
   const loadingEl = content.querySelector(".panel-loading");
   if (loadingEl) loadingEl.remove();
-
-  const allUnits = [
-    ...history.units.map((u) => ({ ...u, classification: "production" })),
-    ...history.storage_units.map((u) => ({ ...u, classification: "storage" })),
-  ].sort((a, b) => a.first_period.localeCompare(b.first_period));
 
   const hasMultipleProductionNames = history.units.length > 1;
   const hasStorage = history.storage_units.length > 0;
@@ -164,6 +163,68 @@ function closeFieldPanel() {
   document.getElementById("field-panel").hidden = true;
 }
 
+const RETROSPECTIVE_CAVEAT =
+  "Operator (as currently recorded by NSTA). This series attributes a field's " +
+  "ENTIRE production history to whichever company operates it today - not " +
+  "whoever operated it at the time. A barrel produced in 2008 is counted " +
+  "under the current operator, even if a different company operated the " +
+  "field then (spec section 6.1). This is a stepping-stone metric and an " +
+  "internal consistency check, not the intended headline figure - a later " +
+  "phase replaces it with dated equity-share attribution.";
+
+function renderOperatorPanelShell(operatorName) {
+  const panel = document.getElementById("field-panel");
+  const content = document.getElementById("field-panel-content");
+  content.innerHTML = `
+    <div class="panel-field-name">${escapeHtml(operatorName)}</div>
+    <div class="panel-meta-row">Operator (as currently recorded by NSTA)</div>
+    <div class="panel-caveat">${escapeHtml(RETROSPECTIVE_CAVEAT)}</div>
+    <div class="panel-loading">Loading operator history&hellip;</div>
+  `;
+  panel.hidden = false;
+}
+
+function renderOperatorPanelHistory(operatorHistory) {
+  const content = document.getElementById("field-panel-content");
+  const loadingEl = content.querySelector(".panel-loading");
+  if (loadingEl) loadingEl.remove();
+
+  const section = document.createElement("div");
+  section.innerHTML = `
+    <div class="panel-section-title">Monthly production history</div>
+    <div id="chart-liquids" class="chart-box"></div>
+    <div id="chart-gas" class="chart-box"></div>
+  `;
+  content.appendChild(section);
+
+  const liquidsEl = document.getElementById("chart-liquids");
+  const gasEl = document.getElementById("chart-gas");
+  renderHistoryCharts(liquidsEl, gasEl, operatorHistory.series).catch((err) => {
+    const errEl = document.createElement("div");
+    errEl.className = "panel-error";
+    errEl.textContent = `Failed to load charts.\n\n${err.message}`;
+    content.appendChild(errEl);
+  });
+}
+
+async function openOperatorPanel(operatorName, operatorsSplit) {
+  renderOperatorPanelShell(operatorName);
+  try {
+    const operatorHistory = await getOperatorHistory(slugify(operatorName), operatorsSplit);
+    renderOperatorPanelHistory(operatorHistory);
+  } catch (err) {
+    const content = document.getElementById("field-panel-content");
+    const loadingEl = content.querySelector(".panel-loading");
+    if (loadingEl) loadingEl.remove();
+    const errEl = document.createElement("div");
+    errEl.className = "panel-error";
+    errEl.textContent =
+      "Failed to load operator history.\n\n" +
+      (err instanceof DataLoadError ? err.message : String(err));
+    content.appendChild(errEl);
+  }
+}
+
 async function main() {
   let meta;
   let fieldsGeojson;
@@ -197,6 +258,10 @@ async function main() {
   });
 
   document.getElementById("field-panel-close").addEventListener("click", closeFieldPanel);
+  document.getElementById("view-operator-history").addEventListener("click", () => {
+    const selected = document.getElementById("operator-filter").value;
+    if (selected) openOperatorPanel(selected, meta.operators_split);
+  });
 }
 
 main();

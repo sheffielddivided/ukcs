@@ -26,6 +26,7 @@
       <select id="operator-filter">
         <!-- populated from fields.geojson at load time -->
       </select>
+      <button id="view-operator-history" type="button" disabled>View operator production history</button>
 
       <div class="legend">
         <h2>Marker colour</h2>
@@ -65,7 +66,11 @@
   </div>
 
   <footer>
-    <span id="footer-text">Loading&hellip;</span>
+    <div id="footer-text">Loading&hellip;</div>
+    <div id="footer-attribution">
+      Contains information provided by the North Sea Transition Authority and/or other third
+      parties. <a href="https://www.nstauthority.co.uk/site-tools/terms-and-conditions/" target="_blank" rel="noopener">NSTA terms and conditions</a>.
+    </div>
   </footer>
 
   <script type="module" src="./app/main.js"></script>

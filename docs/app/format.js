@@ -25,3 +25,15 @@ export function formatBuiltAt(builtAt) {
   if (Number.isNaN(date.getTime())) return builtAt;
   return date.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
 }
+
+// Must match etl/transform.py's slugify() exactly - same algorithm, same
+// output, since the frontend needs to derive an operator's slug from its
+// display name to fetch operators/{slug}.json (or look it up in the
+// embedded operators.json index).
+export function slugify(name) {
+  return String(name ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}

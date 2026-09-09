@@ -464,3 +464,112 @@ def build_fields_geojson(records: list[FieldRecord]) -> dict:
             }
         )
     return {"type": "FeatureCollection", "features": features}
+
+
+GENERATED_FROM_OPERATOR = "current operator of record"
+
+
+@dataclass
+class OperatorHistory:
+    slug: str
+    name: str
+    field_slugs: list[str] = dataclass_field(default_factory=list)
+    series: list[dict] = dataclass_field(default_factory=list)
+
+
+def aggregate_operators(histories: list[FieldHistory]) -> tuple[list[OperatorHistory], dict]:
+    """Aggregate field histories to operator grain (spec section 9.4 / 13
+    step 7).
+
+    Every field's ENTIRE history is attributed to whichever operator most
+    recently held it (FieldHistory.operator, itself already the "current
+    operator of record" per section 6.1's retrospective convention) - a
+    2008 barrel is counted under today's operator, not whoever operated
+    the field in 2008. This is explicitly a stepping stone/consistency
+    check (spec section 1), not the intended end product; Phase 2 replaces
+    it with dated equity intervals.
+
+    Storage exclusion is inherited for free: `histories` here is the same
+    FieldHistory list aggregate_history() already built with storage units
+    excluded from every series point, so no separate handling is needed.
+
+    A field is never split across operators - one field has exactly one
+    "current operator of record", so summing per (operator, period) is a
+    straight sum over whichever fields currently belong to that operator,
+    with no risk of double-counting a field under two operators.
+
+    Returns (operator_histories, stats) where stats has:
+      operator_count, field_count (== len(histories), for cross-checking).
+    """
+    by_operator: dict[str, list[FieldHistory]] = {}
+    for h in histories:
+        if not h.operator:
+            raise ValueError(
+                f"Field {h.field!r} (slug {h.slug!r}) has no operator on "
+                "record - cannot attribute it to an operator grain."
+            )
+        by_operator.setdefault(h.operator, []).append(h)
+
+    operator_histories: list[OperatorHistory] = []
+    for operator_name in sorted(by_operator.keys()):
+        field_histories = by_operator[operator_name]
+        by_period: dict[str, dict] = {}
+        for fh in field_histories:
+            for point in fh.series:
+                period = point["period"]
+                totals = by_period.setdefault(
+                    period, {out_key: 0.0 for out_key in VALUE_FIELD_MAP.values()}
+                )
+                for out_key in VALUE_FIELD_MAP.values():
+                    value = point.get(out_key)
+                    if value is not None:
+                        totals[out_key] += value
+
+        series = [
+            {"period": period, **{k: round3(v) for k, v in by_period[period].items()}}
+            for period in sorted(by_period.keys())
+        ]
+
+        operator_histories.append(
+            OperatorHistory(
+                slug=slugify(operator_name),
+                name=operator_name,
+                field_slugs=sorted(fh.slug for fh in field_histories),
+                series=series,
+            )
+        )
+
+    stats = {
+        "operator_count": len(operator_histories),
+        "field_count": len(histories),
+    }
+    return operator_histories, stats
+
+
+def build_operators_artifacts(
+    operator_histories: list[OperatorHistory],
+) -> tuple[dict, dict]:
+    """Build the operators.json index document (latest values only) and
+    the full per-operator series documents (spec 9.4). Returns
+    (index_document, per_slug_documents). Caller decides whether the
+    per-slug documents are actually written to separate files (>2MB
+    threshold, spec 9.4) or embedded back into operators.json."""
+    index: dict = {}
+    per_slug: dict = {}
+    for oh in sorted(operator_histories, key=lambda o: o.slug):
+        latest = oh.series[-1] if oh.series else None
+        index[oh.slug] = {
+            "name": oh.name,
+            "field_count": len(oh.field_slugs),
+            "first_period": oh.series[0]["period"] if oh.series else None,
+            "last_period": latest["period"] if latest else None,
+            "latest": latest,
+        }
+        per_slug[oh.slug] = {
+            "slug": oh.slug,
+            "name": oh.name,
+            "generated_from": GENERATED_FROM_OPERATOR,
+            "fields": oh.field_slugs,
+            "series": oh.series,
+        }
+    return index, per_slug

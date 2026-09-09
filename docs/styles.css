@@ -96,7 +96,35 @@ header .subtitle {
   width: 100%;
   padding: 0.4rem;
   font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+#view-operator-history {
+  width: 100%;
+  padding: 0.4rem;
+  font-size: 0.82rem;
   margin-bottom: 1rem;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--page-plane);
+  color: var(--text-primary);
+  border-radius: 4px;
+}
+
+#view-operator-history:disabled {
+  cursor: not-allowed;
+  color: var(--text-muted);
+}
+
+.panel-caveat {
+  font-size: 0.78rem;
+  background: var(--page-plane);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  margin: 0.5rem 0 1rem;
+  line-height: 1.4;
 }
 
 .legend {
@@ -293,6 +321,14 @@ footer {
   border-top: 1px solid var(--border);
   background: var(--surface);
   font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+#footer-attribution {
+  margin-top: 0.2rem;
+}
+
+#footer-attribution a {
   color: var(--text-secondary);
 }
 

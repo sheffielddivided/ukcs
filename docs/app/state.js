@@ -54,3 +54,45 @@ export async function getFieldHistory(slug) {
     throw err;
   }
 }
+
+// operators.json is either the full index WITH each operator's series
+// embedded (small build), or an index with series omitted plus separate
+// operators/{slug}.json files (spec 9.4's >2MB split - meta.json's
+// operators_split flag says which). Either way this loads operators.json
+// at most once and caches per-operator series lookups, mirroring
+// getFieldHistory's lazy/cached behaviour.
+let operatorsIndexPromise = null;
+function getOperatorsIndex() {
+  if (!operatorsIndexPromise) {
+    operatorsIndexPromise = fetchJson("./data/operators.json");
+  }
+  return operatorsIndexPromise;
+}
+
+const operatorHistoryCache = new Map();
+
+export async function getOperatorHistory(slug, operatorsSplit) {
+  if (operatorHistoryCache.has(slug)) {
+    return operatorHistoryCache.get(slug);
+  }
+  const promise = (async () => {
+    if (operatorsSplit) {
+      return fetchJson(`./data/operators/${slug}.json`);
+    }
+    const index = await getOperatorsIndex();
+    const entry = index.operators[slug];
+    if (!entry || !entry.series) {
+      throw new DataLoadError(
+        `Operator '${slug}' not found (or has no series) in operators.json`
+      );
+    }
+    return { slug, name: entry.name, series: entry.series };
+  })();
+  operatorHistoryCache.set(slug, promise);
+  try {
+    return await promise;
+  } catch (err) {
+    operatorHistoryCache.delete(slug);
+    throw err;
+  }
+}

@@ -709,20 +709,47 @@ thing, and conflating them would imply the data is more current than it is.
 
 ## 12. Licensing and attribution
 
-**Do not state a licence in the application until it has been confirmed.**
+**Resolved, v2.2: the operative document is the NSTA User Agreement, dated June 2023.**
 
 The data.gov.uk entries for the PPRS points dataset and Field Partners show no licence set or
 "Custom License". Specification v1.0 asserted Open Government Licence v3.0; that is not supported
-by the catalogue entries. NSTA's own map products instead reference an **"OGA Open User Licence"**,
-which is a distinct, named instrument.
+by the catalogue entries. NSTA's own site instead links, from its own terms-and-conditions page
+(`nstauthority.co.uk/site-tools/terms-and-conditions/`), to a PDF titled **"North Sea Transition
+Authority User Agreement"**, dated June 2023 (`nsta-user-agreeement-june-2023.pdf`). This is the
+operative document and was read in full (not summarised) before this section was written.
+
+**A materially different, older document is still mirrored by third parties and must not be
+relied on.** A page at marine.gov.scot mirrors an older text called the "OGA Open User Licence"
+(version 1.0). It differs from the June 2023 document in ways that matter:
+
+| | Older "OGA Open User Licence" v1.0 (third-party mirror) | **Current NSTA User Agreement, June 2023 (operative)** |
+| --- | --- | --- |
+| Commercial use | Permits exploiting the Information "commercially and non-commercially" | Permits exploiting the Information **non-commercially** only — no commercial-use grant |
+| Attribution string | "Contains information provided by the OGA." | "Contains information provided by the North Sea Transition Authority and/or other third parties." |
+| Link to licence | "where possible, provide a link to this licence" | No such clause |
+
+Both documents share the same structure otherwise: worldwide/royalty-free/perpetual/non-exclusive
+rights to copy, publish, distribute, transmit and adapt the Information; a mandatory verbatim
+attribution statement whose omission automatically terminates the granted rights; exemptions for
+personal data, unpublished information, logos, third-party rights and other IP; a non-endorsement
+clause; no warranty; and English & Wales governing law.
+
+**Use of this project's NSTA-derived data has been assessed as non-commercial** under the June
+2023 User Agreement, recorded in `ATTRIBUTION.md` with the assessment date. That assessment is
+specific to the current use and the current document version — a change in either requires
+re-assessment; this section does not pre-authorise one.
 
 Therefore:
 
-- `ATTRIBUTION.md` states source, dataset names, item IDs, and that licence terms are to be
-  confirmed with the NSTA GIS team (`gis@nstauthority.co.uk`).
-- The UI attributes the NSTA and links to the Open Data site.
-- The UI shall **not** display an OGL badge or claim any specific licence.
-- Read the OGA Open User Licence terms before any public publication.
+- `ATTRIBUTION.md` states the source, dataset names, item IDs, the operative licence document and
+  its date, the non-commercial-use assessment and when it was made, the verbatim required
+  attribution string, and explicitly flags that the older mirrored "OGA Open User Licence" text is
+  superseded and must not be relied on.
+- The UI carries the verbatim required attribution string in the footer, alongside a link to the
+  NSTA terms-and-conditions page.
+- The UI does **not** display any licence badge (no OGL badge, no "open data" badge) and makes no
+  claim beyond the required attribution string itself — the attribution string is a licence
+  condition being met, not a badge asserting a licence status.
 
 ---
 

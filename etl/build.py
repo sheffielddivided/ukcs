@@ -1,11 +1,11 @@
 """
-ETL entry point (spec section 8 / 13 steps 3 and 5).
+ETL entry point (spec section 8 / 13 steps 3, 5 and 7).
 
 Resolves the PPRS points service, validates its schema, fetches the latest
 period (with geometry) and the full attribute history (no geometry),
-classifies reporting units, aggregates to field grain, validates, and
-writes meta.json, fields.geojson, and history/*.json. operators.json is a
-later step per the section 13 build order.
+classifies reporting units, aggregates to field and operator grain,
+validates, and writes meta.json, fields.geojson, history/*.json and
+operators.json (+ operators/*.json if the >2MB split threshold is hit).
 
 Usage: python etl/build.py
 Exit code is non-zero on any validation failure; on failure, docs/data/ is
@@ -37,10 +37,14 @@ from arcgis import (  # noqa: E402
     resolve_service_url,
 )
 from transform import (  # noqa: E402
+    GENERATED_FROM_OPERATOR,
+    VALUE_FIELD_MAP,
     aggregate_history,
     aggregate_latest_period,
+    aggregate_operators,
     build_fields_geojson,
     build_history_artifacts,
+    build_operators_artifacts,
     load_unit_classification,
 )
 from validate import (  # noqa: E402
@@ -82,6 +86,8 @@ OUT_FIELDS = (
     "OBJECTID,FIELDNAME,FIELDAREA,LOCATION,ORGGRPNM,UNITNAME,UNITTYPDES,"
     "PERIODYRMN,OILPRODMBD,AGASPROMMS,DGASPROMMS,GCONDMBD,GASPIPVOLM,WATPRODMBD"
 )
+
+OPERATORS_SPLIT_THRESHOLD_BYTES = 2 * 1024 * 1024  # spec 9.4
 
 
 class BuildError(RuntimeError):
@@ -148,6 +154,29 @@ def write_history_dir_atomic(history_dir: Path, per_slug: dict, index: dict) -> 
     if history_dir.exists():
         shutil.rmtree(history_dir)
     staging_dir.rename(history_dir)
+
+
+def write_slug_files_atomic(target_dir: Path, per_slug: dict) -> None:
+    """Like write_history_dir_atomic but without an index.json inside the
+    directory - used for operators/{slug}.json when the >2MB split (spec
+    9.4) is triggered, since operators.json itself (at the docs/data/
+    level, not inside this directory) already serves as the index."""
+    staging_dir = target_dir.with_name(target_dir.name + ".tmp")
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir)
+    staging_dir.mkdir(parents=True)
+
+    for slug, doc in per_slug.items():
+        (staging_dir / f"{slug}.json").write_text(_json_text(doc), encoding="utf-8")
+
+    if target_dir.exists():
+        shutil.rmtree(target_dir)
+    staging_dir.rename(target_dir)
+
+
+def remove_dir_if_exists(target_dir: Path) -> None:
+    if target_dir.exists():
+        shutil.rmtree(target_dir)
 
 
 def main() -> int:
@@ -277,6 +306,58 @@ def main() -> int:
 
         history_per_slug, history_index = build_history_artifacts(histories)
 
+        # --- Operators (spec 13 step 7): current-operator-of-record
+        # aggregation, stepping-stone metric only (spec 6.1/9.4). Storage
+        # exclusion is inherited for free - `histories` here is the same
+        # storage-excluded FieldHistory list built above.
+        operator_histories, operator_stats = aggregate_operators(histories)
+        print(f"Operator aggregation stats: {operator_stats}")
+
+        operators_index, operators_per_slug = build_operators_artifacts(operator_histories)
+
+        # Conservation check: attributing every field's history to its
+        # current operator must not add or drop any volume - the total of
+        # each value field summed across all operator-period entries must
+        # equal the same total summed across all field-period entries.
+        # This is a straight repartition (each field belongs to exactly
+        # one operator), so any mismatch indicates a real aggregation bug,
+        # not rounding noise beyond the tolerance below.
+        for out_key in VALUE_FIELD_MAP.values():
+            field_total = sum(
+                point.get(out_key) or 0.0
+                for doc in history_per_slug.values()
+                for point in doc["series"]
+            )
+            operator_total = sum(
+                point.get(out_key) or 0.0
+                for doc in operators_per_slug.values()
+                for point in doc["series"]
+            )
+            if abs(field_total - operator_total) > 0.01:
+                raise BuildError(
+                    f"Operator aggregation is not conservative for {out_key!r}: "
+                    f"sum across all fields = {field_total}, sum across all "
+                    f"operators = {operator_total} (difference "
+                    f"{abs(field_total - operator_total)} exceeds tolerance). "
+                    "This indicates fields were dropped or double-counted "
+                    "when attributed to operators."
+                )
+        print("Operator aggregation conservation check passed for all value fields.")
+
+        operators_full_text_size = len(
+            _json_text({"generated_from": None, "operators": {
+                slug: {**operators_index[slug], "series": operators_per_slug[slug]["series"]}
+                for slug in operators_index
+            }}).encode("utf-8")
+        )
+        operators_split = operators_full_text_size > OPERATORS_SPLIT_THRESHOLD_BYTES
+        print(
+            f"operators.json embedded-series size would be "
+            f"{operators_full_text_size / 1e6:.2f} MB "
+            f"(split threshold {OPERATORS_SPLIT_THRESHOLD_BYTES / 1e6:.0f} MB) -> "
+            f"{'SPLIT into operators/*.json' if operators_split else 'single operators.json file'}"
+        )
+
         previous_meta = load_previous_meta()
         delta_notes = check_against_previous_build(
             previous_meta,
@@ -309,6 +390,8 @@ def main() -> int:
             "history_field_count": history_stats["field_with_history_count"],
             "history_field_count_raw": history_stats["raw_field_count"],
             "history_series_point_count": history_stats["period_count"],
+            "operator_count": operator_stats["operator_count"],
+            "operators_split": operators_split,
             "schema_hash": schema_hash,
             "notes": notes,
         }
@@ -317,7 +400,7 @@ def main() -> int:
         print(f"\nBUILD FAILED: {e}", file=sys.stderr)
         return 1
 
-    # All validation passed - write artifacts. Both writes are atomic
+    # All validation passed - write artifacts. Writes are atomic
     # individually; if the process dies between them, the next run's
     # schema/record-count checks will catch any resulting inconsistency
     # rather than serving mismatched files silently.
@@ -326,10 +409,32 @@ def main() -> int:
     write_json_atomic(DOCS_DATA_DIR / "fields.geojson", fields_geojson)
     write_history_dir_atomic(DOCS_DATA_DIR / "history", history_per_slug, history_index)
 
+    operators_doc = {
+        "generated_from": GENERATED_FROM_OPERATOR,
+        "operators": {
+            slug: (
+                {**operators_index[slug]}
+                if operators_split
+                else {**operators_index[slug], "series": operators_per_slug[slug]["series"]}
+            )
+            for slug in operators_index
+        },
+    }
+    write_json_atomic(DOCS_DATA_DIR / "operators.json", operators_doc)
+    if operators_split:
+        write_slug_files_atomic(DOCS_DATA_DIR / "operators", operators_per_slug)
+    else:
+        remove_dir_if_exists(DOCS_DATA_DIR / "operators")
+
     print(f"\nWrote {DOCS_DATA_DIR / 'meta.json'}")
     print(f"Wrote {DOCS_DATA_DIR / 'fields.geojson'}")
     print(f"Wrote {DOCS_DATA_DIR / 'history'}/ ({len(history_per_slug)} field files + index.json)")
+    print(
+        f"Wrote {DOCS_DATA_DIR / 'operators.json'}"
+        + (f" + {DOCS_DATA_DIR / 'operators'}/ ({len(operators_per_slug)} files)" if operators_split else "")
+    )
     print(f"field_count={meta['field_count']} (raw distinct FIELDNAME: {meta['field_count_raw']})")
+    print(f"operator_count={meta['operator_count']} (split={operators_split})")
     return 0
 
 
