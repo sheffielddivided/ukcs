@@ -1,1 +1,1 @@
-{"fields":["teal-west"],"generated_from":"current operator of record","name":"HIBISCUS PETROLEUM","series":[{"assoc_gas_mmscfd":0.0,"condensate_mbd":0.0,"dry_gas_mmscfd":0.0,"oil_mbd":0.0,"period":"202606","water_mbd":0.0}],"slug":"hibiscus-petroleum"}
+{"fields":["teal-west"],"generated_from":"current operator of record","name":"HIBISCUS PETROLEUM","series":[{"assoc_gas_mmscfd":0.0,"condensate_mbd":0.0,"dry_gas_mmscfd":0.0,"liquids_mboed":0.0,"natural_gas_mboed":0.0,"oil_mbd":0.0,"period":"202606","total_mboed":0.0,"water_mbd":0.0}],"slug":"hibiscus-petroleum"}
