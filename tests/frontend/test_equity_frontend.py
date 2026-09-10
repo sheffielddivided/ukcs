@@ -360,6 +360,39 @@ def test_invalid_operator_slug_in_url_fails_gracefully(load_app, page):
     assert "no-such-operator" in banner
 
 
+# --- Field panel production chart: annual oil/gas mboe/d bars (2026-09-10) -
+
+def test_field_panel_shows_annual_oil_gas_bar_chart_not_monthly_lines(load_app, page):
+    load_app()
+    page.fill("#global-search", "ALPHA FIELD")
+    page.wait_for_timeout(500)
+    page.click(".search-result")
+    page.wait_for_timeout(700)
+
+    option = page.evaluate("() => window.__echartsCharts['chart-field-annual']")
+    assert option is not None
+    # alpha-field's fixture history spans 202511/202512 (year 2025) and
+    # 202601 (year 2026) - consolidated to one point per YEAR, not one
+    # per month.
+    assert option["xAxis"]["data"] == ["2025", "2026"]
+    series_by_name = {s["name"]: s for s in option["series"]}
+    assert set(series_by_name) == {"Oil", "Gas"}
+    assert series_by_name["Oil"]["type"] == "bar"
+    assert series_by_name["Gas"]["type"] == "bar"
+    # Oil = oil_mbd + condensate_mbd, averaged over the year's months.
+    # 2025: (10.5+0.2 + 9.8+0.18) / 2 = 10.34; 2026: 10.0+0.15 = 10.15.
+    assert series_by_name["Oil"]["data"] == [pytest.approx(10.34, abs=0.001), pytest.approx(10.15, abs=0.001)]
+    # Gas = (assoc_gas_mmscfd + dry_gas_mmscfd) converted to mboe/d via
+    # the published gas_scf_per_boe=6000 (fixture meta.json), averaged
+    # over the year's months. 2025: ((1.0+5.0)*1000/6000 + (0.9+4.8)*1000/6000) / 2
+    # = (1.0 + 0.95) / 2 = 0.975; 2026: (1.0+4.5)*1000/6000 = 0.91667.
+    assert series_by_name["Gas"]["data"] == [pytest.approx(0.975, abs=0.001), pytest.approx(0.9167, abs=0.001)]
+    # The old separate monthly mb/d and MMscf/d line charts are gone.
+    assert page.locator("#chart-liquids").count() == 0
+    assert page.locator("#chart-gas").count() == 0
+    assert_no_forbidden_requests(page)
+
+
 # --- 13. Field ownership view -------------------------------------------
 
 
@@ -394,6 +427,29 @@ def test_field_ownership_tab_lazy_loads_and_distinguishes_row_types(load_app, pa
     # not appear as a normal row outside the <details> block.
     assert page.locator(".ownership-table >> text=DELTA ENTITY LIMITED").count() >= 1
     assert page.locator("table.ownership-table:not(.source-event-details *) >> text=DELTA ENTITY LIMITED").count() == 0
+
+
+def test_field_ownership_rows_show_current_owners_first_then_historic_descending(load_app, page):
+    """Regression test (2026-09-10 continuation): current (open-ended)
+    interests must render above every historic (ended) interest,
+    regardless of source order, and the historic block itself must be
+    sorted descending by end_date (most recently ended first) - never
+    left in whatever order the source data happened to list them."""
+    load_app()
+    page.fill("#global-search", "ALPHA FIELD")
+    page.wait_for_timeout(500)
+    page.click(".search-result")
+    page.wait_for_timeout(700)
+    page.click("#field-panel-tab-ownership")
+    page.wait_for_timeout(700)
+
+    names = page.locator(".ownership-table:not(.source-event-details *) tbody tr td:first-child").all_inner_texts()
+    # ALPHA/BETA are both current (null end_date, "Current" in the To
+    # column) - ahead of GAMMA (ended 202001) and EPSILON (ended
+    # 201501), which must themselves appear with the more-recently-ended
+    # one (GAMMA) first.
+    assert names == ["ALPHA ENTITY LIMITED", "BETA ENTITY LIMITED", "GAMMA ENTITY LIMITED", "EPSILON ENTITY LIMITED"]
+    assert_no_forbidden_requests(page)
 
 
 def test_murlach_field_ownership_shows_both_holders_and_excluded_periods(load_app, page):

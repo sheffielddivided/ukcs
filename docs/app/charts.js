@@ -43,6 +43,7 @@ function loadEcharts() {
 
 let liquidsChart = null;
 let gasChart = null;
+let fieldAnnualChart = null;
 let resizeListenerAttached = false;
 
 function attachResizeListener() {
@@ -51,6 +52,7 @@ function attachResizeListener() {
   window.addEventListener("resize", () => {
     if (liquidsChart) liquidsChart.resize();
     if (gasChart) gasChart.resize();
+    if (fieldAnnualChart) fieldAnnualChart.resize();
   });
 }
 
@@ -104,6 +106,34 @@ export async function renderHistoryCharts(liquidsEl, gasEl, series) {
       },
     ],
   });
+}
+
+// Field panel's annual oil/gas bar chart (2026-09-10 continuation):
+// consolidates the field's native-unit series down to two mboe/d series -
+// Oil (oil + condensate) and Gas (assoc + dry gas, already converted by
+// the caller using the one published gas_scf_per_boe factor) - shown as
+// annual averages, in bars, replacing the previous two separate
+// monthly line charts (mb/d and MMscf/d, on two different units). A
+// year with no known value for a series is passed as `value: null` so
+// ECharts leaves a genuine gap rather than drawing a fabricated zero bar.
+export async function renderFieldAnnualChart(el, years, oilMboed, gasMboed) {
+  const echarts = await loadEcharts();
+  attachResizeListener();
+
+  if (fieldAnnualChart) fieldAnnualChart.dispose();
+  fieldAnnualChart = echarts.init(el);
+  fieldAnnualChart.setOption({
+    tooltip: { trigger: "axis" },
+    legend: { data: ["Oil", "Gas"], top: 4, textStyle: { fontSize: 11 } },
+    grid: { top: 40, left: 60, right: 20, bottom: 40 },
+    xAxis: { type: "category", data: years },
+    yAxis: { type: "value", name: "mboe/d" },
+    series: [
+      { name: "Oil", type: "bar", color: "#eb6834", data: oilMboed },
+      { name: "Gas", type: "bar", color: "#2a78d6", data: gasMboed },
+    ],
+  });
+  return fieldAnnualChart;
 }
 
 // Single-stream equity chart (spec: equity frontend checkpoint). One

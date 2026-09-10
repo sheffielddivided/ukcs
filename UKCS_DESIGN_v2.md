@@ -2182,3 +2182,40 @@ repro: served `docs/` with the real (CDN-fetched) `maplibre-gl` bundle and the r
 `fields.geojson`/`field_polygons.geojson` against headless Chromium with software WebGL
 (`--use-gl=swiftshader`), confirming `map.on("error", ...)` fired the style-spec rejection before
 the fix and that matched polygons render with real oil/gas-coloured fill after it.
+
+### 17.9 Fields-map field panel — annual oil/gas bar chart, sorted ownership (2026-09-10) — IMPLEMENTED
+
+Requested: "the production charts per field should be consolidated to oil and gas (in mboe), and
+presented as annual averages instead of monthly, and in bars instead of a line chart. The
+ownership data should show the current or most recent owners at the top, and the historic
+ownership positions should be sorted in descending order by date." Scoped to the field panel only
+(the map view's per-field detail panel) - the Operator panel's history chart (`renderHistoryCharts`
+in `charts.js`, still monthly mb/d + MMscf/d line charts) is untouched, since the request was
+specific to "per field" and the two panels share no chart state.
+
+- `docs/app/main.js`'s new `annualOilGasMboeSeries()` consolidates a field's monthly native-unit
+  series (`oil_mbd`/`condensate_mbd`/`assoc_gas_mmscfd`/`dry_gas_mmscfd`) down to two annual mboe/d
+  series - Oil (`oil_mbd + condensate_mbd`) and Gas (converted via the one published
+  `gas_scf_per_boe` factor from `meta.json`, stored on `ui.gasScfPerBoe` at startup - never a
+  second local constant, enforced by `tests/test_no_second_gas_conversion.py`). A year's value is
+  the average of only the months that actually carry that component (never a missing month treated
+  as zero), and a year with zero known months for a component is `null` (a genuine chart gap).
+- `docs/app/charts.js`'s new `renderFieldAnnualChart()` renders these as one bar chart (Oil/Gas,
+  its own `fieldAnnualChart` singleton, mirroring the existing `liquidsChart`/`gasChart`/
+  `equityChart` isolation pattern so it can never be disposed by an unrelated chart's re-render) -
+  replacing the field panel's previous two separate monthly line charts (`#chart-liquids`/
+  `#chart-gas`, mb/d and MMscf/d on two different units) with one `#chart-field-annual` bar chart
+  in one consolidated unit.
+- `docs/app/equity-ui.js`'s new `sortIntervalsByRecency()` sorts a field's ownership intervals so
+  every current (open-ended, `end_date === null`) interest renders above every historic (ended)
+  one, and the historic block is itself sorted descending by `end_date` (most recently ended
+  first) - `start_date`/`end_date` are zero-padded date-like strings (`YYYYMM` or `YYYY-MM-DD`
+  depending on source vintage), so a plain string comparison already sorts them chronologically.
+  Applied to both the real ownership-period rows and the collapsed zero-duration source-event
+  records.
+
+Tested in `tests/frontend/test_equity_frontend.py`
+(`test_field_panel_shows_annual_oil_gas_bar_chart_not_monthly_lines`,
+`test_field_ownership_rows_show_current_owners_first_then_historic_descending` - the latter needed
+a second historic interval added to the `alpha-field` equity fixture, since the existing fixture
+only had one historic row and so could not exercise descending-order-among-historic on its own).

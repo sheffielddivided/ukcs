@@ -214,9 +214,31 @@ export async function openEquityPanel(companySlug, companyName, { onError, initi
 
 // --- Field ownership section (added to the existing field panel) ---
 
+// Current (open-ended, end_date null) interests first - among those,
+// most recently started first - then historic (ended) interests sorted
+// descending by end_date, i.e. the most recently-ended position at the
+// top of the historic block (spec: "current or most recent owners at
+// the top... historic ownership positions sorted in descending order by
+// date"). start_date/end_date are zero-padded date-like strings
+// ("YYYYMM" or "YYYY-MM-DD" depending on source), so a plain string
+// comparison already sorts them chronologically - no date parsing needed.
+function sortIntervalsByRecency(intervals) {
+  return [...intervals].sort((a, b) => {
+    const aCurrent = a.end_date == null;
+    const bCurrent = b.end_date == null;
+    if (aCurrent !== bCurrent) return aCurrent ? -1 : 1;
+    if (aCurrent) return b.start_date.localeCompare(a.start_date);
+    return b.end_date.localeCompare(a.end_date);
+  });
+}
+
 function ownershipRowsHtml(intervals) {
-  const realIntervals = intervals.filter((iv) => iv.start_date !== iv.end_date);
-  const eventRecords = intervals.filter((iv) => iv.start_date === iv.end_date);
+  const realIntervals = sortIntervalsByRecency(
+    intervals.filter((iv) => iv.start_date !== iv.end_date)
+  );
+  const eventRecords = [...intervals.filter((iv) => iv.start_date === iv.end_date)].sort(
+    (a, b) => b.start_date.localeCompare(a.start_date)
+  );
 
   const rows = realIntervals
     .map((iv) => {

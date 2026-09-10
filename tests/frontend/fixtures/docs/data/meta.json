@@ -1,5 +1,6 @@
 {
   "built_at": "2026-01-01T00:00:00Z",
+  "gas_scf_per_boe": 6000,
   "company_count": 2,
   "earliest_period": "201303",
   "field_count": 2,

@@ -41,6 +41,14 @@
       "end_date": "201401",
       "operator_flag": "N",
       "status": "resolved"
+    },
+    {
+      "company_name": "EPSILON ENTITY LIMITED",
+      "interest_pct": 10,
+      "start_date": "201001",
+      "end_date": "201501",
+      "operator_flag": "N",
+      "status": "resolved"
     }
   ]
 }

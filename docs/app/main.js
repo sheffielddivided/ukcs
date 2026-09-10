@@ -9,7 +9,7 @@
 // production map and field/operator views must remain usable even if
 // docs/data/equity/* fails to load.
 import { initMap, filterByOperator, setLayerVisibility, setSelectedFieldPolygon, LAYERS } from "./map.js";
-import { renderHistoryCharts } from "./charts.js";
+import { renderHistoryCharts, renderFieldAnnualChart } from "./charts.js";
 import { DataLoadError, fetchJson, getFieldHistory, getOperatorHistory } from "./state.js";
 import { formatBuiltAt, formatPeriod, formatPeriodShort, slugify } from "./format.js";
 import { getEquityMeta, getEquityIndex, streamIndexFromUrlSlug } from "./equity.js";
@@ -129,6 +129,45 @@ function renderFieldPanelShell(fieldProps) {
   attachFieldOwnershipTab(fieldProps.slug);
 }
 
+// Consolidates a field's monthly native-unit series (oil_mbd,
+// condensate_mbd, assoc_gas_mmscfd, dry_gas_mmscfd) down to two annual
+// mboe/d series - Oil (oil + condensate) and Gas (assoc + dry gas,
+// converted via the one published gas_scf_per_boe factor, never a second
+// local constant). Averaging is honest: a year's value is the average of
+// only its months that actually carry that component, never treating a
+// missing month as zero, and a year with zero known months for a
+// component is left as `null` (a genuine chart gap, never a fabricated
+// zero) - same discipline as production.js's own annual-average toggle.
+function annualOilGasMboeSeries(monthlySeries, gasScfPerBoe) {
+  const byYear = new Map();
+  for (const p of monthlySeries) {
+    const year = p.period.slice(0, 4);
+    if (!byYear.has(year)) byYear.set(year, { oilSum: 0, oilCount: 0, gasSum: 0, gasCount: 0 });
+    const bucket = byYear.get(year);
+    if (p.oil_mbd != null || p.condensate_mbd != null) {
+      bucket.oilSum += (p.oil_mbd || 0) + (p.condensate_mbd || 0);
+      bucket.oilCount += 1;
+    }
+    if (p.assoc_gas_mmscfd != null || p.dry_gas_mmscfd != null) {
+      // MMscf/d -> mboe/d: (MMscf/d * 1000) / (scf per boe), matching
+      // methodology.html's published natural_gas_mboed formula exactly.
+      bucket.gasSum += ((p.assoc_gas_mmscfd || 0) + (p.dry_gas_mmscfd || 0)) * 1000 / gasScfPerBoe;
+      bucket.gasCount += 1;
+    }
+  }
+  const years = [...byYear.keys()].sort();
+  const round3 = (n) => Math.round(n * 1000) / 1000;
+  const oil = years.map((y) => {
+    const b = byYear.get(y);
+    return b.oilCount > 0 ? round3(b.oilSum / b.oilCount) : null;
+  });
+  const gas = years.map((y) => {
+    const b = byYear.get(y);
+    return b.gasCount > 0 ? round3(b.gasSum / b.gasCount) : null;
+  });
+  return { years, oil, gas };
+}
+
 function renderFieldPanelHistory(history) {
   const content = document.getElementById("field-panel-production-content");
   content.innerHTML = "";
@@ -166,18 +205,17 @@ function renderFieldPanelHistory(history) {
            </div>`
         : ""
     }
-    <div class="panel-section-title">Monthly production history</div>
-    <div id="chart-liquids" class="chart-box"></div>
-    <div id="chart-gas" class="chart-box"></div>
+    <div class="panel-section-title">Annual average production (oil &amp; gas, mboe/d)</div>
+    <div id="chart-field-annual" class="chart-box"></div>
   `;
   content.appendChild(section);
 
-  const liquidsEl = document.getElementById("chart-liquids");
-  const gasEl = document.getElementById("chart-gas");
-  renderHistoryCharts(liquidsEl, gasEl, history.series).catch((err) => {
+  const { years, oil, gas } = annualOilGasMboeSeries(history.series, ui.gasScfPerBoe);
+  const chartEl = document.getElementById("chart-field-annual");
+  renderFieldAnnualChart(chartEl, years, oil, gas).catch((err) => {
     const errEl = document.createElement("div");
     errEl.className = "panel-error";
-    errEl.textContent = `Failed to load charts.\n\n${err.message}`;
+    errEl.textContent = `Failed to load chart.\n\n${err.message}`;
     content.appendChild(errEl);
   });
 }
@@ -383,6 +421,12 @@ async function main() {
     );
     return;
   }
+
+  // Reused for the field panel's annual oil/gas mboe/d conversion below -
+  // the one published, ETL-approved gas-to-boe factor (meta.json's own
+  // gas_scf_per_boe), never a second frontend-local constant (spec
+  // section 17/7, tests/test_no_second_gas_conversion.py).
+  ui.gasScfPerBoe = meta.gas_scf_per_boe;
 
   renderFooter(meta);
   console.debug(`history index loaded: ${Object.keys(historyIndex).length} fields`);
