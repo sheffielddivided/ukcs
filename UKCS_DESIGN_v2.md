@@ -2073,3 +2073,32 @@ job, not something committed directly from a feature branch.
 **All three deliverables from the continuation instruction are now implemented**: Production
 overview (17.3), Current licence-portfolio frontend (17.4), Historical licence-interest pipeline
 and frontend (this section).
+
+### 17.6 "Split-screen" defect (2026-09-10) — FIXED, real test-coverage gap closed
+
+Reported live: switching to Production or Licence portfolio left the Fields map's own sidebar
+(`#sidebar`, the equity/operator search controls) visibly rendering underneath the active view.
+
+Root cause: `#layout` sets its own `display: flex` (needed for its internal sidebar/map/panel
+layout). An element's own `display` declaration is an author-origin rule, which always overrides
+the browser's built-in `[hidden] { display: none }` default regardless of selector specificity
+(origin is compared before specificity in the CSS cascade). `main.js`'s `layout.hidden = true`
+therefore had no visual effect at all once `#layout` also carried its own `display` value - the
+DOM `hidden` attribute was set correctly, but nothing on screen changed. Fixed with an explicit
+`#layout[hidden] { display: none; }` override in `docs/styles.css`; every other element toggled
+via `.hidden` in the JS was checked and has no competing `display` declaration.
+
+**The real finding**: none of the 92 committed frontend tests caught this, not because the
+assertions were wrong, but because `tests/frontend/conftest.py`'s test harness never loaded
+`docs/styles.css` at all - `fixtures/test.html` had no stylesheet `<link>`, so the entire suite
+ran against unstyled markup where the browser's `[hidden]` default was never being overridden by
+anything. A CSS-only defect like this one was structurally invisible to the suite regardless of
+how many visibility assertions were written. Fixed at the root, not just patched around: the test
+harness now copies and loads the real, unmodified `docs/styles.css`
+(`tests/frontend/conftest.py`'s `serve_root` fixture, `fixtures/test.html`'s new `<link>` tag).
+Re-running the full 93-test suite against the real stylesheet for the first time surfaced no other
+latent CSS-only defects. A new regression test
+(`test_layout_hidden_attribute_actually_hides_it_not_just_the_dom_flag` in
+`tests/frontend/test_production_frontend.py`) asserts the real computed `display` value, not just
+the DOM `hidden` property, and asserts the Fields-map-only sidebar is genuinely absent from the
+render tree while Production is active.

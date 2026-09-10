@@ -101,6 +101,18 @@ header .subtitle {
   min-height: 0;
 }
 
+/* An element's own `display` declaration (needed here for the
+   sidebar/map/panel flex layout) otherwise overrides the browser's
+   built-in `[hidden] { display: none }` default - author CSS always
+   wins over that user-agent rule regardless of selector specificity.
+   Without this, setting `layout.hidden = true` (main.js's showTopView)
+   has no visual effect once #layout also sets its own `display`, and
+   the Fields map sidebar keeps rendering underneath the Production or
+   Licence portfolio view. */
+#layout[hidden] {
+  display: none;
+}
+
 #view-production,
 #view-licence {
   flex: 1;

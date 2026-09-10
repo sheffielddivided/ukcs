@@ -48,6 +48,11 @@ def serve_root(tmp_path_factory):
     shutil.copytree(REPO_ROOT / "docs" / "app", root / "app")
     shutil.copytree(FIXTURES_DIR / "docs" / "data", root / "data")
     shutil.copy(FIXTURES_DIR / "test.html", root / "index.html")
+    # The real, unmodified stylesheet - not a test-only stand-in. A CSS-
+    # only bug (e.g. a `display` declaration silently overriding the
+    # browser's `[hidden]` default) is otherwise invisible to this whole
+    # suite, no matter how many assertions run against unstyled markup.
+    shutil.copy(REPO_ROOT / "docs" / "styles.css", root / "styles.css")
     (root / "methodology.html").write_text("<!doctype html><title>Methodology</title><h1>Methodology (test fixture)</h1>")
     return root
 

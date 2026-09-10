@@ -14,7 +14,16 @@
     against fixture data, not a reimplementation of it. No maplibre-gl.css
     link here (styling is irrelevant to these tests, and the real link tag
     carries a pinned SRI hash that a stub stylesheet could never satisfy).
+
+    The real docs/styles.css IS loaded (copied in by conftest.py's
+    serve_root fixture) - a CSS-only bug (e.g. an element's own
+    `display` declaration silently overriding the browser's built-in
+    `[hidden] { display: none }` default) is otherwise invisible to
+    this entire suite no matter how many assertions are written against
+    unstyled markup. See test_layout_hidden_attribute_actually_hides_it
+    in test_production_frontend.py for the regression this caught.
   -->
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <header>

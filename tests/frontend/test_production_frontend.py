@@ -176,6 +176,29 @@ def test_switching_to_fields_map_hides_production_and_vice_versa(load_app):
     assert_no_forbidden_requests(page)
 
 
+def test_layout_hidden_attribute_actually_hides_it_not_just_the_dom_flag(load_app):
+    """Regression test: #layout sets its own `display: flex` (needed for
+    its sidebar/map/panel layout), which - being an author rule - always
+    overrides the browser's built-in `[hidden] { display: none }`
+    default regardless of selector specificity. Without a matching
+    `#layout[hidden] { display: none }` override in docs/styles.css,
+    main.js's `layout.hidden = true` had NO visual effect: the Fields
+    map sidebar (#sidebar, #equity-company-input, etc) kept rendering
+    underneath the Production/Licence portfolio view - a real
+    "split-screen" bug none of this suite's other assertions caught,
+    because the test harness did not load the real stylesheet at all
+    until this fix (see conftest.py's serve_root)."""
+    page = load_app("")
+    page.wait_for_selector("#production-stats details")
+    # Real computed style, not just the DOM `hidden` property/attribute.
+    display = page.eval_on_selector("#layout", "el => getComputedStyle(el).display")
+    assert display == "none"
+    # The Fields-map-only sidebar must not be present in the render tree
+    # at all while Production is the active view.
+    assert page.locator("#sidebar").is_hidden()
+    assert page.locator("#equity-company-input").is_hidden()
+
+
 def test_no_overview_artifacts_fetched_before_production_view_is_shown(load_app):
     """Fields map must never pay Production's overview-fetch cost - the
     Production module is only initialised when its view is actually
