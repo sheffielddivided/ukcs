@@ -81,6 +81,7 @@ export async function initProductionView(container) {
       <div id="production-chart" style="height:360px"></div>
       <div id="production-empty" class="production-empty" hidden>No data for selected filters</div>
     </div>
+    <div id="production-other-note" class="production-other-note" hidden></div>
     <div id="production-summary" class="sr-summary" aria-live="polite"></div>
     <div id="production-group-detail"></div>
   `;
@@ -187,6 +188,10 @@ export async function refreshFromUrl() {
   document.getElementById("production-topn-controls").hidden = split !== "field";
   document.getElementById("production-caveat").hidden = !(split === "company" && (state.pgrain || "group") === "group");
   document.getElementById("production-group-detail").innerHTML = "";
+  // Reset here, not just implicitly overwritten - a split/selection with
+  // no "Other" bucket at all (e.g. commodity, or Oil vs Gas category)
+  // must never leave a stale note from the PREVIOUS render visible.
+  document.getElementById("production-other-note").hidden = true;
 
   renderFreqToggle(state);
   renderFilters(split, state);
@@ -411,6 +416,7 @@ async function fieldCategorySeries(groupName, companyDoc, periods) {
       return Math.max(0, +(total - sumDisplayed).toFixed(3));
     });
     series.push({ name: "Other fields", color: "#b8b8b8", data: otherData });
+    renderOtherNote("Other fields", rest.map((f) => f.name));
   }
 
   return series;
@@ -511,6 +517,34 @@ function toggleEmpty(isEmpty) {
   document.getElementById("production-empty").hidden = !isEmpty;
 }
 
+// Footnote listing exactly which fields/companies an "Other..." series
+// folds together, below the chart - every "Other" bucket in this view
+// (the UKCS-wide By field split's "Other fields", a single company's own
+// "Other fields", and "Other companies" when many companies are shown)
+// names its members explicitly rather than leaving the reader to guess
+// what's inside the grey bar. A long list (the UKCS-wide split can fold
+// in hundreds of fields) collapses behind <details> so it never pushes
+// the chart's own summary out of view; a short one (typically just a
+// handful, for the two company-level buckets) renders as a plain
+// sentence.
+const OTHER_NOTE_COLLAPSE_THRESHOLD = 15;
+
+function renderOtherNote(bucketLabel, names) {
+  const box = document.getElementById("production-other-note");
+  if (!names || names.length === 0) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  box.hidden = false;
+  const sorted = [...names].sort();
+  if (sorted.length > OTHER_NOTE_COLLAPSE_THRESHOLD) {
+    box.innerHTML = `<details><summary>${escapeHtml(bucketLabel)} (${sorted.length}) - click to list</summary>${escapeHtml(sorted.join(", "))}</details>`;
+  } else {
+    box.textContent = `${bucketLabel} includes: ${sorted.join(", ")}.`;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Company split
 // ---------------------------------------------------------------------------
@@ -603,6 +637,7 @@ async function renderCompanySplit(state) {
       });
       monthlyStacked.push({ name: "Other companies", color: "#b8b8b8", data: otherData });
       cappedNote = ` (top ${top.length} of ${top.length + rest.length} shown, rest grouped as Other)`;
+      renderOtherNote("Other companies", rest.map((entry) => entry.name));
     }
   }
 
@@ -765,4 +800,10 @@ async function renderFieldSplit(state) {
   const unitLabel = annual ? `${displayPeriods.length} year(s) (annual average)` : `${periods.length} months`;
   document.getElementById("production-summary").textContent =
     `Top ${selectedSlugs.length} field(s) shown plus Other fields, over ${unitLabel}.`;
+
+  const selectedSet = new Set(selectedSlugs);
+  const otherNames = Object.values(fields)
+    .filter((f) => !selectedSet.has(f.slug))
+    .map((f) => f.name);
+  renderOtherNote("Other fields", otherNames);
 }

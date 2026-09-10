@@ -204,6 +204,16 @@ header .subtitle {
   margin-top: 0.5rem;
 }
 
+.production-other-note {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 0.4rem;
+}
+
+.production-other-note summary {
+  cursor: pointer;
+}
+
 .group-detail-panel {
   margin-top: 1rem;
   padding: 0.75rem;

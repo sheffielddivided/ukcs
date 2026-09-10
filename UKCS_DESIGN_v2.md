@@ -2339,3 +2339,29 @@ capping without disturbing every other test that already depends on its exact sh
 **Follow-up, same day**: requested "show the 10 largest fields instead of only 6" (applies to both
 call sites, same `TOP_N_DEFAULT` constant) - `TOP_N_DEFAULT` changed from `6` to `10`, and both
 regression tests above were rebuilt with >10-entry fixtures (was >6) to keep exercising the cap.
+
+### 17.12 Production overview — footnote naming what's inside every "Other" bucket (2026-09-10) — IMPLEMENTED
+
+Requested: "Whenever we have an 'Other' category in the charts, I want a footnote below the chart
+with a list of the fields or companies that are included in this category." Applies to all three
+"Other" buckets in this view: the UKCS-wide By field split's own "Other fields" (pre-existing, Top
+N selectable), a single company's own "Other fields" (17.10/17.11), and "Other companies" (17.11).
+
+`docs/app/production.js`'s new `renderOtherNote(bucketLabel, names)` populates a new
+`#production-other-note` element (added to the chart shell, right below `#production-chart-wrap`;
+reset to hidden at the top of every `refreshFromUrl()` so a stale note from a previous
+split/selection never lingers) - a plain sentence ("Other fields includes: Beta Field, Gamma
+Field.") for a short list, or a `<details>` a reader opts into for a long one (more than 15 items
+- the UKCS-wide split can fold in hundreds of fields, where a bare sentence would dominate the
+page). Hidden entirely when nothing was actually excluded (the UKCS-wide split always renders an
+"Other fields" series even at zero, for a stable legend - the footnote only appears when that
+series is non-trivial). All three call sites already had the excluded-items list on hand from the
+existing Top-N/capping logic (`rest`, or the full field set minus `selectedSlugs`) - this call
+adds a footnote, not a new "which items are excluded" computation.
+
+Tested in `tests/frontend/test_production_frontend.py`
+(`test_field_split_top_n_plus_other_reconciles_to_ukcs_total`'s extended no-exclusion assertion,
+`test_field_split_other_footnote_names_the_excluded_fields`,
+`test_other_footnote_collapses_behind_details_when_the_list_is_long`, and extended assertions on
+the existing `test_single_company_field_breakdown_caps_to_top_10_plus_other`/
+`test_multiple_companies_capped_to_top_10_plus_other_companies`).

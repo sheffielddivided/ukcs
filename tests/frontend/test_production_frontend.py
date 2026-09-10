@@ -307,6 +307,60 @@ def test_single_company_field_breakdown_caps_to_top_10_plus_other(load_app, page
     # ((8.0-7.9)+(8.5-7.9)+(9.5-7.9))/3 = (0.1+0.6+1.6)/3.
     assert series_by_name["Other fields"][0] == pytest.approx(0.767, abs=0.001)
     assert "top 10 shown, rest grouped as Other" in page.locator("#production-summary").text_content()
+
+    note = page.locator("#production-other-note")
+    assert not note.is_hidden()
+    assert note.text_content() == "Other fields includes: FIELD 11, FIELD 12."
+    assert_no_forbidden_requests(page)
+
+
+def test_other_footnote_collapses_behind_details_when_the_list_is_long(load_app, page):
+    """A long excluded list (more than 15 items) collapses behind
+    <details> instead of dumping dozens of names straight onto the
+    page - still fully present in the DOM, just not sprawled open by
+    default."""
+
+    def _flat_field_doc(name, value):
+        return {
+            "slug": name.lower().replace(" ", "-"),
+            "name": name,
+            "series": [
+                {
+                    "period": p,
+                    "liquids_mboed": {"value": round(value * 0.6, 3), "status": "complete"},
+                    "natural_gas_mboed": {"value": round(value * 0.4, 3), "status": "complete"},
+                    "total_mboed": {"value": value, "status": "complete"},
+                }
+                for p in ["202401", "202402", "202403"]
+            ],
+        }
+
+    # 10 large fields (shown) + 20 tiny ones (excluded - well over the
+    # 15-item collapse threshold).
+    field_values = [(f"BIG FIELD {i}", 10.0 - i * 0.1) for i in range(10)] + [
+        (f"SMALL FIELD {i}", 0.01) for i in range(20)
+    ]
+    breakdown = {"Alpha Group": {name: _flat_field_doc(name, v) for name, v in field_values}}
+    page.route(
+        "**/data/overview/company_groups_field_breakdown.json",
+        lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(breakdown)),
+    )
+
+    load_app("")
+    page.wait_for_selector("#production-stats details")
+    page.click('button[data-split="company"]')
+    page.wait_for_timeout(200)
+    page.select_option("#pf-company", "Alpha Group")
+    page.wait_for_timeout(400)
+
+    note = page.locator("#production-other-note")
+    assert not note.is_hidden()
+    assert note.locator("details summary").count() == 1
+    assert "Other fields (20)" in note.locator("summary").text_content()
+    full_text = note.text_content()
+    assert "SMALL FIELD 0" in full_text
+    assert "SMALL FIELD 19" in full_text
+    assert "BIG FIELD 0" not in full_text
     assert_no_forbidden_requests(page)
 
 
@@ -385,6 +439,10 @@ def test_multiple_companies_capped_to_top_10_plus_other_companies(load_app, page
     # ((1.9+1.5)+(1.9+1.5)+(1.9+1.8)) / 3 = 3.5.
     assert series_by_name["Other companies"][0] == pytest.approx(3.5, abs=0.001)
     assert "top 10 of 12 shown" in page.locator("#production-summary").text_content()
+
+    note = page.locator("#production-other-note")
+    assert not note.is_hidden()
+    assert note.text_content() == "Other companies includes: NewCo10 Group, Unresolved legal entities."
     assert_no_forbidden_requests(page)
 
 
@@ -408,6 +466,24 @@ def test_field_split_top_n_plus_other_reconciles_to_ukcs_total(load_app):
     # Both fixture fields fit within the default Top 10, so nothing is
     # pushed into "Other fields".
     assert series_by_name["Other fields"] == [0.0, 0.0, 0.0]
+    # Nothing excluded - the footnote must not appear at all.
+    assert page.locator("#production-other-note").is_hidden()
+
+
+def test_field_split_other_footnote_names_the_excluded_fields(load_app):
+    """Regression test (2026-09-10 continuation): whenever a chart has an
+    "Other" bucket, a footnote below it must name exactly which
+    fields/companies were folded into it."""
+    page = load_app("psplit=field&pfields=alpha-field&pfreq=monthly")
+    page.wait_for_selector("#production-stats details")
+    option = page.evaluate("() => window.__echartsCharts['production-chart']")
+    series_by_name = {s["name"] for s in option["series"]}
+    assert series_by_name == {"Alpha Field", "Other fields", "Total"}
+
+    note = page.locator("#production-other-note")
+    assert not note.is_hidden()
+    assert note.text_content() == "Other fields includes: Beta Field."
+    assert_no_forbidden_requests(page)
 
 
 def test_clear_filters_resets_date_range_and_selection(load_app):
