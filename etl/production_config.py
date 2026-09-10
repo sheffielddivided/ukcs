@@ -48,29 +48,18 @@ PRODUCTION_CONVERSION_METHODOLOGY = "mboed-v1-6000-scf-per-boe"
 # artifact - not a separate policy invented for this milestone.
 MBOED_ROUND_DECIMALS = 3
 
-# Explicit tolerance for cross-grain conservation checks (field-to-
-# operator, field-to-company) on the DERIVED fields specifically.
-#
-# This is deliberately looser than validate.py's native-field tolerance
-# (0.01) - NOT because the derived model is less strict, but because it
-# has a genuinely different, larger noise source. The native fields
-# (oil_mbd, dry_gas_mmscfd, etc.) are conserved by plain summation, which
-# empirically loses no precision (source values already fall on exact
-# 3-decimal boundaries, so round3(a)+round3(b) == round3(a+b) almost
-# always; observed field-vs-operator diff over the full 1975-2026 history
-# is ~1e-8, pure floating-point noise). natural_gas_mboed instead divides
-# by 6 before rounding, which IS a genuine, unavoidable information loss
-# at every rounding point - and the two grains round at very different
-# points: once per field-period (~134,000 independent roundings across
-# the full history) versus once per operator-period (roughly two orders
-# of magnitude fewer). Each of those two independent sets of roundings is
-# a small random walk of up to +/-0.0005 mboe/d per step; verified against
-# a real full-history build, the accumulated field-vs-operator difference
-# reached ~0.21 for natural_gas_mboed and ~0.53 for total_mboed (which
-# inherits both components' noise). This tolerance is set with roughly an
-# order of magnitude of headroom over that observed worst case, while
-# staying many orders of magnitude tighter than what an actual aggregation
-# bug (a whole field silently dropped or double-counted, which would move
-# a cumulative multi-decade total by thousands of mboe/d-months) would
-# produce - so it remains a meaningful check, not a rubber stamp.
-CONSERVATION_TOLERANCE_MBOED = 5.0
+# NOTE (Workstream 0 hardening, spec approved 2026-09-10): this module
+# previously defined a single flat CONSERVATION_TOLERANCE_MBOED = 5.0 for
+# cross-grain (field-vs-operator) conservation of the derived fields. On
+# review this was found to risk concealing a dropped field producing
+# under ~5 mboe/d. It has been replaced by two narrower,
+# mathematically-derived checks in etl/validate.py:
+#   - validate_full_precision_conservation() - a tight, floating-point-
+#     only tolerance (FLOAT_PRECISION_TOLERANCE_MBOED, also defined in
+#     validate.py) applied BEFORE any rounding.
+#   - validate_serialized_derived_conservation() - a tolerance computed
+#     at build time via compute_serialization_tolerance(), from this
+#     build's own real entry counts and the MBOED_ROUND_DECIMALS
+#     precision above, rather than a fixed constant.
+# See etl/validate.py's docstrings on both functions for the full
+# derivation and etl/build.py's call sites for how they're wired in.

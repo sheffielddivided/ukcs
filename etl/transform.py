@@ -258,6 +258,17 @@ class FieldHistory:
     series: list[dict] = dataclass_field(default_factory=list)
     production_units: list[dict] = dataclass_field(default_factory=list)
     storage_units: list[dict] = dataclass_field(default_factory=list)
+    # Full-precision (never rounded) per-period totals, same periods/keys
+    # as `series` but pre-round3()/pre-round_mboed() (spec section 0,
+    # Workstream 0 hardening). NOT part of any serialized artifact -
+    # build_history_artifacts() below whitelists only the fields it
+    # writes, so this never leaks into history/{slug}.json. Exists so
+    # aggregate_operators() can aggregate from true full precision
+    # (rather than re-summing already-rounded field values, which was
+    # the double-rounding source of the original 5.0 flat tolerance) and
+    # so build.py can run a tight, floating-point-only pre-serialization
+    # conservation check before either grain is ever rounded.
+    full_precision_series: list[dict] = dataclass_field(default_factory=list)
 
 
 def aggregate_history(
@@ -333,6 +344,7 @@ def aggregate_history(
             by_period.setdefault(row["attributes"]["PERIODYRMN"], []).append(row)
 
         series = []
+        full_precision_series = []
         for period in sorted(by_period.keys()):
             period_rows = by_period[period]
             totals = {out_key: 0.0 for out_key in VALUE_FIELD_MAP.values()}
@@ -359,6 +371,11 @@ def aggregate_history(
                     "total_mboed": round_mboed(derived["total_mboed"]),
                 }
             )
+            # Never rounded (spec section 0, Workstream 0 hardening) - kept
+            # alongside `series` so downstream operator aggregation and the
+            # build's pre-serialization conservation check both work from
+            # the same true full-precision totals.
+            full_precision_series.append({"period": period, **totals, **derived})
         period_count += len(series)
 
         # "Current" region/location/operator per section 6.1's convention:
@@ -403,6 +420,7 @@ def aggregate_history(
                 storage_units=sorted(
                     storage_unit_periods.values(), key=lambda u: u["first_period"]
                 ),
+                full_precision_series=full_precision_series,
             )
         )
 
@@ -503,6 +521,11 @@ class OperatorHistory:
     name: str
     field_slugs: list[str] = dataclass_field(default_factory=list)
     series: list[dict] = dataclass_field(default_factory=list)
+    # Full-precision (never rounded) per-period operator totals, aggregated
+    # directly from each field's full_precision_series (not from `series`,
+    # which is already rounded) - see FieldHistory.full_precision_series.
+    # Not serialized to any artifact.
+    full_precision_series: list[dict] = dataclass_field(default_factory=list)
 
 
 def aggregate_operators(histories: list[FieldHistory]) -> tuple[list[OperatorHistory], dict]:
@@ -538,10 +561,29 @@ def aggregate_operators(histories: list[FieldHistory]) -> tuple[list[OperatorHis
             )
         by_operator.setdefault(h.operator, []).append(h)
 
+    DERIVED_KEYS = ("liquids_mboed", "natural_gas_mboed", "total_mboed")
+    ALL_KEYS = tuple(VALUE_FIELD_MAP.values()) + DERIVED_KEYS
+
     operator_histories: list[OperatorHistory] = []
     for operator_name in sorted(by_operator.keys()):
         field_histories = by_operator[operator_name]
+        # Native fields: accumulated from each field's already-rounded
+        # `series` (round3()'d once at field level), exactly as before
+        # this Workstream - native PPRS values are already exact at
+        # ROUND_DECIMALS precision in the source, so this double-rounding
+        # is empirically lossless (~1e-8 field-vs-operator diff) and
+        # changing its source to full precision was found, on testing, to
+        # actually REINTRODUCE a small but real divergence (some raw
+        # source values are not exact 3-decimal multiples) - so the
+        # native path is deliberately left untouched here.
         by_period: dict[str, dict] = {}
+        # Derived + native full precision: accumulated from each field's
+        # NEVER-rounded full_precision_series (spec section 0, Workstream
+        # 0 hardening) - used only to (a) compute the derived mboe/d
+        # values from true full precision, matching the field grain's own
+        # unrounded derive_mboed() call, and (b) expose full_precision_series
+        # for build.py's pre-serialization conservation check.
+        full_precision_by_period: dict[str, dict] = {}
         for fh in field_histories:
             for point in fh.series:
                 period = point["period"]
@@ -552,32 +594,29 @@ def aggregate_operators(histories: list[FieldHistory]) -> tuple[list[OperatorHis
                     value = point.get(out_key)
                     if value is not None:
                         totals[out_key] += value
+            for point in fh.full_precision_series:
+                period = point["period"]
+                fp_totals = full_precision_by_period.setdefault(period, {k: 0.0 for k in ALL_KEYS})
+                for key in ALL_KEYS:
+                    value = point.get(key)
+                    if value is not None:
+                        fp_totals[key] += value
 
         series = []
+        full_precision_series = []
         for period in sorted(by_period.keys()):
             totals = by_period[period]
-            # Derived from the still-unrounded per-period operator totals
-            # (spec section 17) - these totals are themselves a sum of
-            # already-field-rounded values (the pre-existing precision
-            # characteristic of every native field at operator grain, see
-            # FieldHistory.series above), but the derived formula itself is
-            # applied once, here, to the operator-level aggregate, never by
-            # summing already-rounded per-field derived values.
-            derived = derive_mboed(
-                totals.get("oil_mbd"),
-                totals.get("condensate_mbd"),
-                totals.get("dry_gas_mmscfd"),
-                totals.get("assoc_gas_mmscfd"),
-            )
+            fp_totals = full_precision_by_period[period]
             series.append(
                 {
                     "period": period,
                     **{k: round3(v) for k, v in totals.items()},
-                    "liquids_mboed": round_mboed(derived["liquids_mboed"]),
-                    "natural_gas_mboed": round_mboed(derived["natural_gas_mboed"]),
-                    "total_mboed": round_mboed(derived["total_mboed"]),
+                    "liquids_mboed": round_mboed(fp_totals["liquids_mboed"]),
+                    "natural_gas_mboed": round_mboed(fp_totals["natural_gas_mboed"]),
+                    "total_mboed": round_mboed(fp_totals["total_mboed"]),
                 }
             )
+            full_precision_series.append({"period": period, **fp_totals})
 
         operator_histories.append(
             OperatorHistory(
@@ -585,6 +624,7 @@ def aggregate_operators(histories: list[FieldHistory]) -> tuple[list[OperatorHis
                 name=operator_name,
                 field_slugs=sorted(fh.slug for fh in field_histories),
                 series=series,
+                full_precision_series=full_precision_series,
             )
         )
 

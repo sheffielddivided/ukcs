@@ -47,16 +47,17 @@ from transform import (  # noqa: E402
     load_unit_classification,
 )
 from validate import (  # noqa: E402
-    DERIVED_MBOED_KEYS,
     ValidationError,
     check_against_previous_build,
     validate_bounding_box,
     validate_derived_field_month_formula,
+    validate_full_precision_conservation,
     validate_no_negative_aggregated_values,
     validate_no_negative_values,
     validate_operator_conservation,
     validate_pagination_count,
     validate_schema,
+    validate_serialized_derived_conservation,
     validate_unit_classification_tripwire,
 )
 from equity_artifacts import (  # noqa: E402
@@ -72,7 +73,6 @@ from equity_artifacts import (  # noqa: E402
 )
 from equity_mboed import build_derived_status_by_period  # noqa: E402
 from production_config import (  # noqa: E402
-    CONSERVATION_TOLERANCE_MBOED,
     GAS_SCF_PER_BOE,
     PRODUCTION_CONVERSION_METHODOLOGY,
 )
@@ -371,15 +371,40 @@ def main() -> int:
         )
         validate_derived_field_month_formula({slug: doc["series"] for slug, doc in history_per_slug.items()})
         validate_derived_field_month_formula({slug: doc["series"] for slug, doc in operators_per_slug.items()})
-        # Cross-grain conservation for the derived fields specifically -
-        # same invariant as the native validate_operator_conservation call
-        # above, with a looser, explicitly-documented tolerance
-        # (CONSERVATION_TOLERANCE_MBOED - see production_config.py for why).
-        validate_operator_conservation(
+
+        # Cross-grain conservation for the derived fields (Workstream 0
+        # hardening, spec approved 2026-09-10): the original flat
+        # CONSERVATION_TOLERANCE_MBOED=5.0 was reviewed and replaced with
+        # two narrower, mathematically-justified checks - see
+        # validate.py's module-level docstring on both functions for the
+        # full derivation.
+        #
+        # A. Pre-serialization: full-precision totals (never rounded) -
+        # any divergence beyond float-summation noise is a real
+        # aggregation bug, since the two sides are mathematically
+        # identical sums of the same raw data at this point.
+        full_precision_report = validate_full_precision_conservation(
+            {h.slug: h.full_precision_series for h in histories},
+            {oh.slug: oh.full_precision_series for oh in operator_histories},
+        )
+        print(
+            "Full-precision (pre-serialization) derived conservation passed: "
+            + ", ".join(f"{k}={v:.3e}" for k, v in full_precision_report.items())
+        )
+
+        # B. Post-serialization: the actual artifact values, checked
+        # against a tolerance mathematically derived from this build's
+        # own real entry counts and rounding precision.
+        serialization_report = validate_serialized_derived_conservation(
             {slug: doc["series"] for slug, doc in history_per_slug.items()},
             {slug: doc["series"] for slug, doc in operators_per_slug.items()},
-            tolerance=CONSERVATION_TOLERANCE_MBOED,
-            keys=DERIVED_MBOED_KEYS,
+        )
+        print(
+            "Post-serialization derived conservation passed: "
+            + ", ".join(
+                f"{k}=diff:{v['diff']:.4f}/tol:{v['tolerance']:.4f}"
+                for k, v in serialization_report.items()
+            )
         )
         print("Derived mboe/d formula and field-to-operator conservation checks passed.")
 
