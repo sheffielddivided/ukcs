@@ -1,0 +1,20 @@
+{
+  "Alpha Group": {
+    "member_entities": ["Alpha Co A", "Alpha Co B"],
+    "is_singleton": false,
+    "series": [
+      {"period": "202401", "liquids_mboed": {"value": 5.0, "status": "complete"}, "natural_gas_mboed": {"value": 3.0, "status": "complete"}, "total_mboed": {"value": 8.0, "status": "complete"}},
+      {"period": "202402", "liquids_mboed": {"value": 5.5, "status": "complete"}, "natural_gas_mboed": {"value": 3.0, "status": "complete"}, "total_mboed": {"value": 8.5, "status": "complete"}},
+      {"period": "202403", "liquids_mboed": {"value": 6.0, "status": "complete"}, "natural_gas_mboed": {"value": 3.5, "status": "complete"}, "total_mboed": {"value": 9.5, "status": "complete"}}
+    ]
+  },
+  "Unresolved legal entities": {
+    "member_entities": ["Gamma Co"],
+    "is_singleton": false,
+    "series": [
+      {"period": "202401", "liquids_mboed": {"value": 1.0, "status": "complete"}, "natural_gas_mboed": {"value": 0.5, "status": "complete"}, "total_mboed": {"value": 1.5, "status": "complete"}},
+      {"period": "202402", "liquids_mboed": {"value": 1.0, "status": "complete"}, "natural_gas_mboed": {"value": 0.5, "status": "complete"}, "total_mboed": {"value": 1.5, "status": "complete"}},
+      {"period": "202403", "liquids_mboed": {"value": 1.2, "status": "complete"}, "natural_gas_mboed": {"value": 0.6, "status": "complete"}, "total_mboed": {"value": 1.8, "status": "complete"}}
+    ]
+  }
+}

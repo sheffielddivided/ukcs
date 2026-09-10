@@ -70,10 +70,140 @@ header .subtitle {
   font-size: 0.85rem;
 }
 
+#top-nav {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.4rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.top-nav-button {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--page-plane);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.top-nav-button[aria-current="page"] {
+  background: var(--color-gas);
+  border-color: var(--color-gas);
+  color: #fff;
+}
+
 #layout {
   flex: 1;
   display: flex;
   min-height: 0;
+}
+
+#view-production,
+#view-licence {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  min-height: 0;
+}
+
+.production-stats {
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.production-stats ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+  color: var(--text-secondary);
+}
+
+.production-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.production-tabs {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.tab-btn {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--page-plane);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: var(--color-gas);
+  border-color: var(--color-gas);
+  color: #fff;
+}
+
+.production-subcontrols {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+  align-items: center;
+}
+
+.production-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.production-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  color: var(--text-secondary);
+}
+
+.production-active-filters {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  min-height: 1em;
+}
+
+.production-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.sr-summary {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.group-detail-panel {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+
+.group-detail-panel h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
 }
 
 #sidebar {

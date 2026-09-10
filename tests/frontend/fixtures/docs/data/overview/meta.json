@@ -1,0 +1,15 @@
+{
+  "built_at": "2026-09-10T00:00:00Z",
+  "monthly_totals_earliest_period": "202401",
+  "monthly_totals_latest_period": "202403",
+  "equity_attributable_earliest_period": "202401",
+  "total_legal_entities": 3,
+  "approved_count": 2,
+  "reviewed_manual_mapping_count": 1,
+  "unresolved_count": 1,
+  "excluded_count": 0,
+  "distinct_approved_groups": 1,
+  "unresolved_fallback_count": 1,
+  "production_weighted_current_coverage_pct": 80.0,
+  "latest_period_production_retained_under_unresolved_pct": 20.0
+}

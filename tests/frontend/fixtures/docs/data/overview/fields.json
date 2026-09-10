@@ -1,0 +1,20 @@
+{
+  "alpha-field": {
+    "slug": "alpha-field",
+    "name": "Alpha Field",
+    "series": [
+      {"period": "202401", "liquids_mboed": 7.0, "natural_gas_mboed": 3.0, "total_mboed": 10.0},
+      {"period": "202402", "liquids_mboed": 7.0, "natural_gas_mboed": 3.0, "total_mboed": 10.0},
+      {"period": "202403", "liquids_mboed": 8.0, "natural_gas_mboed": 3.0, "total_mboed": 11.0}
+    ]
+  },
+  "beta-field": {
+    "slug": "beta-field",
+    "name": "Beta Field",
+    "series": [
+      {"period": "202401", "liquids_mboed": 3.0, "natural_gas_mboed": 2.0, "total_mboed": 5.0},
+      {"period": "202402", "liquids_mboed": 4.0, "natural_gas_mboed": 2.0, "total_mboed": 6.0},
+      {"period": "202403", "liquids_mboed": 4.0, "natural_gas_mboed": 3.0, "total_mboed": 7.0}
+    ]
+  }
+}

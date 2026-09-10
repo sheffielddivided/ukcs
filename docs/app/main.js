@@ -15,7 +15,8 @@ import { formatBuiltAt, formatPeriod, formatPeriodShort, slugify } from "./forma
 import { getEquityMeta, getEquityIndex, streamIndexFromUrlSlug } from "./equity.js";
 import { openEquityPanel, attachFieldOwnershipTab } from "./equity-ui.js";
 import { buildSearchIndex, attachSearchUI } from "./search.js";
-import { parseUrlState, setUrlState } from "./urlstate.js";
+import { parseUrlState, setUrlState, currentTopView, switchTopView } from "./urlstate.js";
+import { initProductionView, refreshFromUrl as refreshProductionFromUrl } from "./production.js";
 
 const DATA_META_URL = "./data/meta.json";
 const DATA_FIELDS_URL = "./data/fields.geojson";
@@ -304,7 +305,57 @@ function setMetricMode(mode) {
   // equity legal entities").
 }
 
+// Top-level view switching (Production / Fields map / Licence portfolio).
+// Production is initialized lazily on first visit so a Fields-map-first
+// session never pays its overview-artifact fetch cost, and a failure in
+// one view never touches the others (spec: each top-level view must fail
+// independently).
+let productionInitialized = false;
+
+function showTopView(top) {
+  document.getElementById("view-production").hidden = top !== "production";
+  document.getElementById("layout").hidden = top !== "map";
+  document.getElementById("view-licence").hidden = top !== "licence";
+  for (const [id, view] of [
+    ["top-nav-production", "production"],
+    ["top-nav-map", "map"],
+    ["top-nav-licence", "licence"],
+  ]) {
+    const btn = document.getElementById(id);
+    if (view === top) btn.setAttribute("aria-current", "page");
+    else btn.removeAttribute("aria-current");
+  }
+  if (top === "production" && !productionInitialized) {
+    productionInitialized = true;
+    initProductionView(document.getElementById("view-production")).catch((err) => {
+      console.error("Production view failed to initialize", err);
+    });
+  } else if (top === "production") {
+    refreshProductionFromUrl().catch((err) => {
+      console.error("Production view failed to refresh from URL", err);
+    });
+  }
+}
+
+function setupTopNav() {
+  document.getElementById("top-nav-production").addEventListener("click", () => {
+    switchTopView("production");
+    showTopView("production");
+  });
+  document.getElementById("top-nav-map").addEventListener("click", () => {
+    switchTopView("map");
+    showTopView("map");
+  });
+  document.getElementById("top-nav-licence").addEventListener("click", () => {
+    switchTopView("licence");
+    showTopView("licence");
+  });
+  showTopView(currentTopView());
+}
+
 async function main() {
+  setupTopNav();
+
   let meta;
   let fieldsGeojson;
   let historyIndex;
@@ -465,6 +516,7 @@ async function main() {
   // the panel/mode/stream shown always matches whatever the current URL
   // actually says - never a stale in-memory leftover from a prior state.
   function restoreFromUrl() {
+    showTopView(currentTopView());
     const initial = parseUrlState();
     if (initial.view === "field" && initial.slug) {
       const fieldFeature = fieldsGeojson.features.find((f) => f.properties.slug === initial.slug);

@@ -158,3 +158,55 @@ export async function renderEquityStreamChart(el, points, streamLabel, unit) {
     ],
   });
 }
+
+// Production overview chart (Deliverable 1). Renders EITHER the default
+// Liquids/Natural gas stacked split (commodity mode) OR an N-series
+// stacked split (company/field mode, series pre-built by the caller) -
+// one shared renderer since both are "stacked series + an optional
+// reconciling Total line", just with a different series list. Unavailable
+// points are passed as `value: null` so ECharts leaves a genuine gap
+// (never zero - same discipline as renderEquityStreamChart above).
+let productionChart = null;
+
+export async function renderProductionChart(el, periods, stackedSeries, totalSeries, unit = "mboe/d") {
+  const echarts = await loadEcharts();
+  attachResizeListener();
+
+  if (productionChart) productionChart.dispose();
+  productionChart = echarts.init(el);
+
+  const series = stackedSeries.map((s) => ({
+    name: s.name,
+    type: "bar",
+    stack: "production",
+    color: s.color,
+    data: s.data,
+  }));
+  if (totalSeries) {
+    series.push({
+      name: totalSeries.name || "Total",
+      type: "line",
+      showSymbol: false,
+      color: totalSeries.color || "#1a1a1a",
+      data: totalSeries.data,
+      z: 10,
+    });
+  }
+
+  productionChart.setOption({
+    tooltip: { trigger: "axis" },
+    legend: { top: 4, textStyle: { fontSize: 11 } },
+    grid: { top: 40, left: 60, right: 20, bottom: 60 },
+    xAxis: { type: "category", data: periods, axisLabel: { rotate: 45, fontSize: 10 } },
+    yAxis: { type: "value", name: unit },
+    series,
+  });
+  return productionChart;
+}
+
+export function disposeProductionChart() {
+  if (productionChart) {
+    productionChart.dispose();
+    productionChart = null;
+  }
+}

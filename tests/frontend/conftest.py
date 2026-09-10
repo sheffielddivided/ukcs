@@ -118,6 +118,14 @@ def load_app(page, http_server):
     fetches (meta/fields/history index, equity meta/index) to settle."""
 
     def _load(hash_fragment=None):
+        # This suite (equity + field-polygons) predates the Production
+        # view and is entirely about the Fields map, so a bare call with
+        # no fragment keeps landing on the map - same as every existing
+        # test expects - even though Production is now the application's
+        # own default for a real, hash-less visit (see
+        # test_production_frontend.py for that behaviour).
+        if hash_fragment is None:
+            hash_fragment = "top=map"
         url = http_server + "/index.html"
         if hash_fragment:
             url += f"#{hash_fragment}"

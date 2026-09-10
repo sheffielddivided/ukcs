@@ -1909,3 +1909,58 @@ published fields to resolve its own pre-existing undocumented constant — see b
 polygons (Workstream D), licence portfolios (Workstream E), and the new default production-overview
 view. These remain exactly as described in the discovery summary above — proposals pending their own
 separate approval, not implied or unlocked by this section.
+
+### 17.2 Workstreams C/D/4 (company grouping, field polygons, current licence portfolio) — implemented
+
+Company grouping (`etl/company_groups.py`), authoritative field-determination polygons
+(`etl/field_polygons.py`), and the current company licence portfolio
+(`etl/licence_portfolio.py`) were subsequently approved and implemented, each with its own
+build-breaking validation and committed test coverage. See git history for the corresponding
+commits; this section is not repeated here to avoid duplicating already-merged detail.
+
+### 17.3 Deliverable 1 — Production overview view (2026-09-10) — IMPLEMENTED
+
+The default-view Production overview described in the Phase 3 discovery summary is now
+implemented, end to end:
+
+- **ETL** (`etl/overview.py`, wired into `etl/build.py`): four compact artifacts under
+  `docs/data/overview/` — `meta.json`, `monthly_totals.json` (full 1975–present history, summed
+  from each field's full-precision derived series, rounded once at serialization),
+  `company_groups.json` (equity-window only, one entry per approved current display group plus
+  exactly one collapsed `"Unresolved legal entities"` bucket for every unresolved singleton
+  fallback), `legal_entities.json` (equity-window only, one entry per NSTA-recorded legal entity),
+  and `fields.json` (full history per field, reusing each field's already-published, already-rounded
+  series). Each artifact carries its own build-breaking reconciliation check
+  (`validate_monthly_totals_reconciliation`, `validate_company_groups_overview_reconciliation`,
+  `validate_fields_overview_reconciliation`) — the build fails and writes nothing rather than
+  publish an artifact that cannot reconcile to the totals it must sum to.
+- **Fixed defect**: the grouping-coverage statistics previously conflated distinct *approved*
+  company groups with the count of unresolved legal entities, each temporarily its own singleton
+  fallback "group" — a real repository count of 37 approved groups was previously reported
+  alongside 182 unresolved entities as "219 distinct display groups". `distinct_approved_groups`
+  and `unresolved_fallback_count` are now reported as two separate figures
+  (`etl/company_groups.py`'s `build_grouping_review_report`), covered by a regression test
+  reproducing the bug at repository scale (`tests/test_company_groups.py`).
+- **Frontend** (`docs/app/production.js`, `docs/app/urlstate.js` rewritten to a merge-based,
+  prefixed, deterministically-ordered URL-state API shared with the Fields map and Licence
+  portfolio views, `docs/app/charts.js`'s new `renderProductionChart`): a top-level nav
+  (`docs/index.html`) now separates **Production** (default), **Fields map**, and **Licence
+  portfolio**. Production renders the three splits described above (Liquids/Natural gas default,
+  By company with current-group/legal-entity grain toggle and the required retrospective caveat,
+  By field with a selectable Top 5/10/15/20 plus a client-computed "Other fields" series whose
+  correctness rests on the ETL-side reconciliation check above), combinable date-range/status
+  filters with a "Clear filters" control, an explicit "No data for selected filters" empty state
+  that never renders as zero, and a company-group drill-down panel. A pre-existing hash-less deep
+  link (one carrying `view=`/`slug=`/etc. but no `top=`) is inferred to mean the Fields map, not
+  redirected to the new Production default, so every saved/shared link from before this view
+  existed keeps working unmodified.
+- **Tests**: `tests/test_overview.py` (12 ETL tests) plus 2 new regression tests in
+  `tests/test_company_groups.py`; `tests/frontend/test_production_frontend.py` (committed,
+  CI-run Playwright suite against synthetic fixture artifacts under
+  `tests/frontend/fixtures/docs/data/overview/`) covering the default view, all three splits,
+  both grains, the retrospective caveat, drill-down detail, Top-N + Other reconciliation, filters,
+  empty state, URL round-tripping, view-switch isolation, and the legacy-deep-link fallback.
+- **Not yet implemented**: the Current licence-portfolio frontend (ETL artifacts from Workstream 4
+  already exist; no frontend view consumes them yet — `docs/index.html`'s "Licence portfolio" nav
+  item currently shows a placeholder) and the Historical licence-interest pipeline/frontend
+  (neither the ETL nor the frontend exists yet).

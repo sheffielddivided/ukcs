@@ -1,0 +1,5 @@
+[
+  {"period": "202401", "liquids_mboed": 10.0, "natural_gas_mboed": 5.0, "total_mboed": 15.0},
+  {"period": "202402", "liquids_mboed": 11.0, "natural_gas_mboed": 5.0, "total_mboed": 16.0},
+  {"period": "202403", "liquids_mboed": 12.0, "natural_gas_mboed": 6.0, "total_mboed": 18.0}
+]

@@ -222,8 +222,39 @@
       alone. This is a <strong>current-state-only</strong> grouping: it carries no date range, and a
       current display group is never presented as historically contemporaneous ownership &mdash;
       production shown by current group over historical periods is an analytical regrouping, not a
-      claim about who owned the field at the time. This grouping is not yet surfaced in this site's
-      charts or controls.
+      claim about who owned the field at the time. This grouping is surfaced in the
+      <strong>Production</strong> view's "By company" split, current-group grain, under the same
+      caveat text shown inline there: "Current-group analytical view: historical production has
+      been regrouped using current company relationships. It does not represent company ownership
+      structures at the time." A toggle in that view switches to legal-entity grain, showing each
+      NSTA-recorded legal entity separately with no regrouping. Legal entities with no approved
+      current-group mapping are never dropped from the total &mdash; they are shown collapsed into
+      one "Unresolved legal entities" bucket in current-group grain (and individually in
+      legal-entity grain), so unmapped production always remains visible and contributes to the
+      displayed total.
+    </p>
+
+    <h2>Production overview</h2>
+    <p>
+      The <strong>Production</strong> view (the site's default landing view) shows UKCS total
+      production in mboe/d, split three ways: <strong>Liquids / Natural gas</strong> (the default,
+      full production history from 1975, summing every field's derived <code>liquids_mboed</code>
+      and <code>natural_gas_mboed</code> &mdash; the same already-published, already-rounded
+      per-field values used elsewhere on this site, never recomputed in the browser);
+      <strong>By company</strong> (equity-attributable, so restricted to the equity publication
+      window, current-group or legal-entity grain as above); and <strong>By field</strong> (a
+      selectable Top 5/10/15/20 fields by latest-period production, plus an "Other fields" series
+      defined as UKCS Total minus the sum of the displayed fields' already-published values &mdash;
+      the underlying build verifies that summing every field's series reconciles exactly with the
+      UKCS total series, which is what makes that client-side subtraction meaningful rather than an
+      independently-derived, possibly-inconsistent number).
+    </p>
+    <p>
+      The company-grouping coverage figures shown in this view (approved groups, unresolved
+      entities, latest-period coverage) report <strong>distinct approved company groups</strong>
+      separately from the count of unresolved legal entities each temporarily standing in for their
+      own one-entity fallback &mdash; the two are never combined into one "distinct groups" figure,
+      since a legal entity with no approved mapping is not itself a company group.
     </p>
 
     <h3>What this figure is not</h3>

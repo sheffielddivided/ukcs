@@ -96,3 +96,65 @@ export async function getOperatorHistory(slug, operatorsSplit) {
     throw err;
   }
 }
+
+// Production overview compact artifacts (Deliverable 1). Each is
+// fetched and cached at most once, on first use by whichever split mode
+// needs it - monthly_totals/meta are small enough for the default view's
+// eager load; company_groups/legal_entities/fields are larger and are
+// only ever requested when their split mode is actually selected.
+const overviewCache = new Map();
+
+export function getOverviewArtifact(name) {
+  if (!overviewCache.has(name)) {
+    const promise = fetchJson(`./data/overview/${name}.json`);
+    overviewCache.set(name, promise);
+    promise.catch(() => overviewCache.delete(name));
+  }
+  return overviewCache.get(name);
+}
+
+// Current licence-portfolio artifacts (Workstream 4) - index is small
+// (fetched eagerly by the Licence portfolio view); per-group detail and
+// the full polygon GeoJSON are fetched lazily.
+let licencePortfolioIndexPromise = null;
+export function getLicencePortfolioIndex() {
+  if (!licencePortfolioIndexPromise) {
+    licencePortfolioIndexPromise = fetchJson("./data/licence_portfolio_index.json");
+  }
+  return licencePortfolioIndexPromise;
+}
+
+const licenceGroupCache = new Map();
+export function getLicencePortfolioGroup(slug) {
+  if (!licenceGroupCache.has(slug)) {
+    const promise = fetchJson(`./data/licence_portfolio_groups/${slug}.json`);
+    licenceGroupCache.set(slug, promise);
+    promise.catch(() => licenceGroupCache.delete(slug));
+  }
+  return licenceGroupCache.get(slug);
+}
+
+let licencePortfolioGeojsonPromise = null;
+export function getLicencePortfolioGeojson() {
+  if (!licencePortfolioGeojsonPromise) {
+    licencePortfolioGeojsonPromise = fetchJson("./data/licence_portfolio.geojson");
+  }
+  return licencePortfolioGeojsonPromise;
+}
+
+// Historical licence-interest artifacts (Deliverable 3).
+let licenceHistoryIndexPromise = null;
+export function getLicenceHistoryIndex() {
+  if (!licenceHistoryIndexPromise) {
+    licenceHistoryIndexPromise = fetchJson("./data/licence_history_index.json");
+  }
+  return licenceHistoryIndexPromise;
+}
+
+let licenceHistoryGeojsonPromise = null;
+export function getLicenceHistoryGeojson() {
+  if (!licenceHistoryGeojsonPromise) {
+    licenceHistoryGeojsonPromise = fetchJson("./data/licence_history.geojson");
+  }
+  return licenceHistoryGeojsonPromise;
+}

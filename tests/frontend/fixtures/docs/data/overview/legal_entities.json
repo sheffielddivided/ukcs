@@ -1,0 +1,29 @@
+{
+  "Alpha Co A": {
+    "slug": "alpha-co-a",
+    "name": "Alpha Co A",
+    "series": [
+      {"period": "202401", "liquids_mboed": {"value": 3.0, "status": "complete"}, "natural_gas_mboed": {"value": 2.0, "status": "complete"}, "total_mboed": {"value": 5.0, "status": "complete"}},
+      {"period": "202402", "liquids_mboed": {"value": 3.5, "status": "complete"}, "natural_gas_mboed": {"value": 2.0, "status": "complete"}, "total_mboed": {"value": 5.5, "status": "complete"}},
+      {"period": "202403", "liquids_mboed": {"value": 4.0, "status": "complete"}, "natural_gas_mboed": {"value": 2.0, "status": "complete"}, "total_mboed": {"value": 6.0, "status": "complete"}}
+    ]
+  },
+  "Alpha Co B": {
+    "slug": "alpha-co-b",
+    "name": "Alpha Co B",
+    "series": [
+      {"period": "202401", "liquids_mboed": {"value": 2.0, "status": "complete"}, "natural_gas_mboed": {"value": 1.0, "status": "complete"}, "total_mboed": {"value": 3.0, "status": "complete"}},
+      {"period": "202402", "liquids_mboed": {"value": 2.0, "status": "complete"}, "natural_gas_mboed": {"value": 1.0, "status": "complete"}, "total_mboed": {"value": 3.0, "status": "complete"}},
+      {"period": "202403", "liquids_mboed": {"value": 2.0, "status": "complete"}, "natural_gas_mboed": {"value": 1.5, "status": "complete"}, "total_mboed": {"value": 3.5, "status": "complete"}}
+    ]
+  },
+  "Gamma Co": {
+    "slug": "gamma-co",
+    "name": "Gamma Co",
+    "series": [
+      {"period": "202401", "liquids_mboed": {"value": 1.0, "status": "complete"}, "natural_gas_mboed": {"value": 0.5, "status": "complete"}, "total_mboed": {"value": 1.5, "status": "complete"}},
+      {"period": "202402", "liquids_mboed": {"value": 1.0, "status": "complete"}, "natural_gas_mboed": {"value": 0.5, "status": "complete"}, "total_mboed": {"value": 1.5, "status": "complete"}},
+      {"period": "202403", "liquids_mboed": {"value": 1.2, "status": "complete"}, "natural_gas_mboed": {"value": 0.6, "status": "complete"}, "total_mboed": {"value": 1.8, "status": "complete"}}
+    ]
+  }
+}

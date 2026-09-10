@@ -416,7 +416,9 @@ def test_murlach_field_ownership_shows_both_holders_and_excluded_periods(load_ap
 
 def test_equity_metadata_fetch_failure_does_not_break_the_rest_of_the_site(page, http_server):
     page.route("**/data/equity/meta.json", lambda route: route.fulfill(status=404, body="not found"))
-    page.goto(http_server + "/index.html", wait_until="load")
+    # This suite is entirely about the Fields map - #top=map explicitly,
+    # since a hash-less load now lands on the Production view instead.
+    page.goto(http_server + "/index.html#top=map", wait_until="load")
     page.wait_for_timeout(600)
 
     equity_banner = page.text_content("#equity-status-banner")
@@ -434,7 +436,9 @@ def test_equity_metadata_fetch_failure_does_not_break_the_rest_of_the_site(page,
 
 def test_equity_index_fetch_failure_does_not_break_the_rest_of_the_site(page, http_server):
     page.route("**/data/equity/index.json", lambda route: route.fulfill(status=500, body="server error"))
-    page.goto(http_server + "/index.html", wait_until="load")
+    # This suite is entirely about the Fields map - #top=map explicitly,
+    # since a hash-less load now lands on the Production view instead.
+    page.goto(http_server + "/index.html#top=map", wait_until="load")
     page.wait_for_timeout(600)
     equity_banner = page.text_content("#equity-status-banner")
     assert "failed to load" in equity_banner.lower()
@@ -446,7 +450,9 @@ def test_missing_company_file_shows_http_error_category(page, http_server):
         "**/data/equity/companies/alpha-entity-limited.json",
         lambda route: route.fulfill(status=404, body="not found"),
     )
-    page.goto(http_server + "/index.html", wait_until="load")
+    # This suite is entirely about the Fields map - #top=map explicitly,
+    # since a hash-less load now lands on the Production view instead.
+    page.goto(http_server + "/index.html#top=map", wait_until="load")
     page.wait_for_timeout(600)
     select_equity_company(page, "ALPHA ENTITY LIMITED")
     page.wait_for_timeout(500)
@@ -460,7 +466,9 @@ def test_missing_field_equity_file_shows_http_error_category(page, http_server):
         "**/data/equity/fields/alpha-field.json",
         lambda route: route.fulfill(status=404, body="not found"),
     )
-    page.goto(http_server + "/index.html", wait_until="load")
+    # This suite is entirely about the Fields map - #top=map explicitly,
+    # since a hash-less load now lands on the Production view instead.
+    page.goto(http_server + "/index.html#top=map", wait_until="load")
     page.wait_for_timeout(600)
     page.fill("#global-search", "ALPHA FIELD")
     page.wait_for_timeout(500)
@@ -478,7 +486,9 @@ def test_malformed_equity_artifact_shows_a_parse_error_not_a_crash(page, http_se
         "**/data/equity/companies/alpha-entity-limited.json",
         lambda route: route.fulfill(status=200, content_type="application/json", body="{not valid json"),
     )
-    page.goto(http_server + "/index.html", wait_until="load")
+    # This suite is entirely about the Fields map - #top=map explicitly,
+    # since a hash-less load now lands on the Production view instead.
+    page.goto(http_server + "/index.html#top=map", wait_until="load")
     page.wait_for_timeout(600)
     select_equity_company(page, "ALPHA ENTITY LIMITED")
     page.wait_for_timeout(500)
@@ -673,4 +683,7 @@ def test_stream_url_formatting_is_deterministic(load_app, page):
 
     assert first_url == second_url
     # Exact, stable param order/format - not just equivalent content.
-    assert second_url.endswith("#view=equity&slug=alpha-entity-limited&metric=equity&stream=dry-gas")
+    # `top=map` is present and first because load_app()'s default lands
+    # on the Fields map (see conftest.py); KEY_ORDER always writes `top`
+    # first when present.
+    assert second_url.endswith("#top=map&view=equity&slug=alpha-entity-limited&metric=equity&stream=dry-gas")
