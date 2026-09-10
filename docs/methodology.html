@@ -33,6 +33,17 @@
       build timestamp behind the figures currently on the site.
     </p>
 
+    <h2>Field boundaries</h2>
+    <p>
+      Field outlines shown on the map are NSTA's own authoritative "UKCS petroleum field
+      determinations (WGS84)" polygons &mdash; a separate dataset from the production figures above,
+      matched to production field names by exact and normalised name matching only (no fuzzy
+      matching). Not every producing field currently has a matched boundary (matching is measured and
+      recorded in <a href="./data/meta.json">data/meta.json</a>'s <code>sources.field_polygons</code>
+      block on every build); a field without a matched polygon is never removed from the map &mdash;
+      it still shows as a marker, exactly as before this dataset existed.
+    </p>
+
     <h2>Derived production measures (mboe/d)</h2>
     <p>
       Alongside NSTA's own native-unit fields (oil and condensate in thousand barrels per day,
@@ -200,11 +211,19 @@
       <code>data/equity/anomalies.json</code>.
     </p>
 
-    <h3>No parent-company rollup</h3>
+    <h3>Legal entity vs. current display group</h3>
     <p>
-      Every company name in the equity artifacts is the legal entity exactly as recorded by NSTA in
-      the source workbook. There is no mapping to a current corporate parent or group, and
-      similarly-named entities (e.g. two subsidiaries of the same group) are never merged.
+      Every company name in the equity artifacts is, first and foremost, the legal entity exactly as
+      recorded by NSTA in the source workbook &mdash; this is the audit trail and is never altered.
+      A separate, additive dataset (<a href="./data/equity/groups/report.json">data/equity/groups/</a>)
+      resolves each legal entity to a <strong>current display group</strong>, sourced primarily from
+      NSTA's own live equity-group-holder field (not a general-purpose corporate-family database);
+      an entity with no such evidence is its own singleton group, never merged on a shared name token
+      alone. This is a <strong>current-state-only</strong> grouping: it carries no date range, and a
+      current display group is never presented as historically contemporaneous ownership &mdash;
+      production shown by current group over historical periods is an analytical regrouping, not a
+      claim about who owned the field at the time. This grouping is not yet surfaced in this site's
+      charts or controls.
     </p>
 
     <h3>What this figure is not</h3>

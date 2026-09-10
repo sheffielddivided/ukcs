@@ -35,6 +35,21 @@ const OSM_ATTRIBUTION =
 const SOURCE_ID = "fields";
 const CIRCLE_LAYER_ID = "fields-circles";
 
+// Authoritative field polygons (spec Workstream 3, approved 2026-09-10):
+// NSTA's own field-determination geometry (docs/data/field_polygons.geojson,
+// ETL-matched to PPRS field names - see etl/field_polygons.py). Polygon
+// absence for a field never removes it from the map - the circle layer
+// above remains the fallback for every field, matched or not (spec:
+// "Polygon absence must never remove a producing field from the map.").
+const POLYGON_SOURCE_ID = "field-polygons";
+const POLYGON_FILL_LAYER_ID = "field-polygons-fill";
+const POLYGON_OUTLINE_LAYER_ID = "field-polygons-outline";
+const POLYGON_SELECTED_LAYER_ID = "field-polygons-selected";
+// Medium/high zoom per spec: polygons become the primary geometry from
+// here; below this the circle layer alone carries the map (still with
+// low-prominence outlines available via the layer toggle).
+const POLYGON_PROMINENT_MIN_ZOOM = 7;
+
 function computeDerivedProperties(fieldsGeojson) {
   // Adds commodity (oil/gas/none, for marker colour) from the two
   // already-published, already-comparable mboe/d component fields - no
@@ -78,7 +93,7 @@ function buildPopupHtml(properties) {
   `;
 }
 
-export function initMap(containerId, fieldsGeojsonRaw, onFieldClick) {
+export function initMap(containerId, fieldsGeojsonRaw, onFieldClick, fieldPolygonsGeojson) {
   const fieldsGeojson = computeDerivedProperties(fieldsGeojsonRaw);
 
   const map = new MapLibreMap({
@@ -143,6 +158,82 @@ export function initMap(containerId, fieldsGeojsonRaw, onFieldClick) {
       },
     });
 
+    // Authoritative field-determination polygons (spec Workstream 3) -
+    // added even if there are zero polygons this build, so the layer
+    // toggle always has something to attach to; a genuinely empty
+    // FeatureCollection just renders nothing. Neutral fill (spec:
+    // "Do not colour polygons by company"), low prominence below
+    // POLYGON_PROMINENT_MIN_ZOOM, full prominence at/above it.
+    if (fieldPolygonsGeojson) {
+      map.addSource(POLYGON_SOURCE_ID, { type: "geojson", data: fieldPolygonsGeojson });
+
+      map.addLayer({
+        id: POLYGON_FILL_LAYER_ID,
+        type: "fill",
+        source: POLYGON_SOURCE_ID,
+        paint: {
+          "fill-color": "#5b6b7a",
+          "fill-opacity": [
+            "interpolate", ["linear"], ["zoom"],
+            POLYGON_PROMINENT_MIN_ZOOM - 2, 0.05,
+            POLYGON_PROMINENT_MIN_ZOOM, 0.18,
+          ],
+        },
+      });
+      map.addLayer({
+        id: POLYGON_OUTLINE_LAYER_ID,
+        type: "line",
+        source: POLYGON_SOURCE_ID,
+        paint: {
+          "line-color": "#5b6b7a",
+          "line-width": [
+            "interpolate", ["linear"], ["zoom"],
+            POLYGON_PROMINENT_MIN_ZOOM - 2, 0.5,
+            POLYGON_PROMINENT_MIN_ZOOM, 1.5,
+          ],
+          "line-opacity": [
+            "interpolate", ["linear"], ["zoom"],
+            POLYGON_PROMINENT_MIN_ZOOM - 2, 0.35,
+            POLYGON_PROMINENT_MIN_ZOOM, 0.9,
+          ],
+        },
+      });
+      // Selected-field emphasis (spec: "selected field highlighted") -
+      // an initially-empty filter, updated by setSelectedFieldPolygon().
+      map.addLayer({
+        id: POLYGON_SELECTED_LAYER_ID,
+        type: "line",
+        source: POLYGON_SOURCE_ID,
+        filter: ["==", ["get", "matched_pprs_slug"], "__none__"],
+        paint: {
+          "line-color": "#1d5fd6",
+          "line-width": 3,
+          "line-opacity": 0.95,
+        },
+      });
+
+      map.on("mouseenter", POLYGON_FILL_LAYER_ID, () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", POLYGON_FILL_LAYER_ID, () => {
+        map.getCanvas().style.cursor = "";
+      });
+      if (onFieldClick) {
+        map.on("click", POLYGON_FILL_LAYER_ID, (e) => {
+          const props = e.features[0].properties;
+          if (!props.matched_pprs_slug) return; // unmatched polygon - no field to open
+          // A polygon's own attributes are NSTA determination fields
+          // (field_no, determination_status, ...), not production
+          // properties. Signal a polygon-originated click by slug only
+          // (fromPolygon: true) so the caller resolves full field
+          // properties from its own index - the same resolution path
+          // already used for a search result with no latest-period
+          // marker (clicking either geometry opens the same panel).
+          onFieldClick({ slug: props.matched_pprs_slug, fromPolygon: true });
+        });
+      }
+    }
+
     const popup = new Popup({
       closeButton: false,
       closeOnClick: false,
@@ -178,6 +269,29 @@ export function initMap(containerId, fieldsGeojsonRaw, onFieldClick) {
   });
 
   return map;
+}
+
+// Layer-toggle IDs exported for the "Production bubbles" / "Field
+// outlines" controls (spec Workstream 3) - main.js wires two checkboxes
+// to these via setLayerVisibility(), independent of each other so either
+// can be shown alone or both together; a field is never made
+// unreachable by turning one off, since click handlers exist on both.
+export const LAYERS = {
+  circles: CIRCLE_LAYER_ID,
+  polygonFill: POLYGON_FILL_LAYER_ID,
+  polygonOutline: POLYGON_OUTLINE_LAYER_ID,
+};
+
+export function setLayerVisibility(map, layerId, visible) {
+  if (!map.getLayer(layerId)) return;
+  map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
+}
+
+// Highlights the polygon for `slug` (spec: "selected field highlighted"),
+// or clears the highlight when slug is null/undefined/unmatched.
+export function setSelectedFieldPolygon(map, slug) {
+  if (!map.getLayer(POLYGON_SELECTED_LAYER_ID)) return;
+  map.setFilter(POLYGON_SELECTED_LAYER_ID, ["==", ["get", "matched_pprs_slug"], slug || "__none__"]);
 }
 
 export function filterByOperator(map, operator) {

@@ -1,0 +1,35 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[1.4, 57.9], [1.6, 57.9], [1.6, 58.1], [1.4, 58.1], [1.4, 57.9]]]
+      },
+      "properties": {
+        "field_no": "001",
+        "polygon_field_name": "Alpha Field",
+        "determination_status": "CURRENT",
+        "matched_pprs_field": "ALPHA FIELD",
+        "matched_pprs_slug": "alpha-field",
+        "match_method": "normalized"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[3.0, 59.0], [3.2, 59.0], [3.2, 59.2], [3.0, 59.2], [3.0, 59.0]]]
+      },
+      "properties": {
+        "field_no": "002",
+        "polygon_field_name": "Unmatched Field",
+        "determination_status": "CURRENT",
+        "matched_pprs_field": null,
+        "matched_pprs_slug": null,
+        "match_method": null
+      }
+    }
+  ]
+}

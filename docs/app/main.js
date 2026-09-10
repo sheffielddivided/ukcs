@@ -8,7 +8,7 @@
 // by etl/build.py. An equity data-loading failure is isolated: the
 // production map and field/operator views must remain usable even if
 // docs/data/equity/* fails to load.
-import { initMap, filterByOperator } from "./map.js";
+import { initMap, filterByOperator, setLayerVisibility, setSelectedFieldPolygon, LAYERS } from "./map.js";
 import { renderHistoryCharts } from "./charts.js";
 import { DataLoadError, fetchJson, getFieldHistory, getOperatorHistory } from "./state.js";
 import { formatBuiltAt, formatPeriod, formatPeriodShort, slugify } from "./format.js";
@@ -20,12 +20,14 @@ import { parseUrlState, setUrlState } from "./urlstate.js";
 const DATA_META_URL = "./data/meta.json";
 const DATA_FIELDS_URL = "./data/fields.geojson";
 const DATA_HISTORY_INDEX_URL = "./data/history/index.json";
+const DATA_FIELD_POLYGONS_URL = "./data/field_polygons.geojson";
 
 // Shared UI state, mutated by the mode toggle / selectors / URL restore.
 const ui = {
   metricMode: "equity", // "equity" | "operator"
   fieldsBySlug: new Map(),
   fieldsByName: new Map(),
+  map: null,
 };
 
 function showError(message) {
@@ -178,9 +180,31 @@ function renderFieldPanelHistory(history) {
   });
 }
 
+// Resolves a click that originated on a polygon (map.js passes only
+// {slug, fromPolygon: true} - it has no production properties of its
+// own) to the same fieldProps shape a circle click already provides,
+// preferring the current-period fields.geojson feature (full production
+// detail) and falling back to the historyIndex-derived shell used
+// elsewhere for a field with no latest-period marker (spec: "Clicking
+// either geometry or bubble opens the same field panel.").
+function resolveFieldClick(clicked, fieldsBySlugFeature) {
+  if (!clicked.fromPolygon) return clicked;
+  const feature = fieldsBySlugFeature.get(clicked.slug);
+  if (feature) return feature.properties;
+  const entry = ui.fieldsBySlug.get(clicked.slug);
+  return {
+    field: entry?.field ?? clicked.slug,
+    slug: clicked.slug,
+    operator: entry?.operator ?? null,
+    region: entry?.region ?? null,
+    location: null,
+  };
+}
+
 async function openFieldPanel(fieldProps, updateUrl = true) {
   renderFieldPanelShell(fieldProps);
   if (updateUrl) setUrlState({ view: "field", slug: fieldProps.slug });
+  if (ui.map) setSelectedFieldPolygon(ui.map, fieldProps.slug);
   try {
     const history = await getFieldHistory(fieldProps.slug);
     renderFieldPanelHistory(history);
@@ -305,11 +329,51 @@ async function main() {
     ui.fieldsBySlug.set(slug, entry);
     ui.fieldsByName.set(entry.field, slug);
   }
+  const fieldsBySlugFeature = new Map(
+    fieldsGeojson.features.map((f) => [f.properties.slug, f])
+  );
 
-  const map = initMap("map", fieldsGeojson, (props) => openFieldPanel(props, true));
+  // Field polygons (spec Workstream 3) are fetched separately from the
+  // required startup data above and MUST NOT be allowed to break the
+  // map or any other view if this one optional fetch fails (spec:
+  // "A failed optional panel/data fetch must not take down: Production
+  // overview, Fields map, existing field details, existing operator/
+  // equity views.") - the map still works with point markers alone.
+  let fieldPolygonsGeojson = null;
+  try {
+    fieldPolygonsGeojson = await fetchJson(DATA_FIELD_POLYGONS_URL);
+  } catch (err) {
+    console.warn("Field polygons failed to load - map will show markers only.", err);
+  }
+
+  const map = initMap(
+    "map",
+    fieldsGeojson,
+    (clicked) => openFieldPanel(resolveFieldClick(clicked, fieldsBySlugFeature), true),
+    fieldPolygonsGeojson
+  );
+  ui.map = map;
   const operators = populateOperatorFilter(fieldsGeojson, (operator) => {
     filterByOperator(map, operator);
   });
+
+  if (fieldPolygonsGeojson) {
+    const bubblesToggle = document.getElementById("layer-toggle-bubbles");
+    const outlinesToggle = document.getElementById("layer-toggle-outlines");
+    if (bubblesToggle) {
+      bubblesToggle.addEventListener("change", () => {
+        setLayerVisibility(map, LAYERS.circles, bubblesToggle.checked);
+      });
+    }
+    if (outlinesToggle) {
+      outlinesToggle.addEventListener("change", () => {
+        setLayerVisibility(map, LAYERS.polygonFill, outlinesToggle.checked);
+        setLayerVisibility(map, LAYERS.polygonOutline, outlinesToggle.checked);
+      });
+    }
+  } else {
+    document.getElementById("layer-toggles")?.setAttribute("hidden", "");
+  }
 
   document.getElementById("field-panel-close").addEventListener("click", closeFieldPanel);
   document.getElementById("view-operator-history").addEventListener("click", () => {

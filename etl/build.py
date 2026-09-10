@@ -87,6 +87,14 @@ from company_groups import (  # noqa: E402
     load_company_groups_overrides,
     validate_group_conservation,
 )
+from field_polygons import (  # noqa: E402
+    FIELD_DETERMINATIONS_ITEM_ID,
+    FieldPolygonsError,
+    build_field_polygons_geojson,
+    fetch_field_polygon_rows,
+    match_polygons_to_pprs,
+    unmatched_production_impact,
+)
 
 ITEM_ID_POINTS = "dd38204275a04618ab7ddd00f87224e3"
 DATASET_NAME = "UKCS hydrocarbon field production reports PPRS points (WGS84)"
@@ -421,6 +429,34 @@ def main() -> int:
         )
         print("Derived mboe/d formula and field-to-operator conservation checks passed.")
 
+        # --- Field polygons (Workstream 3, spec approved 2026-09-10):
+        # authoritative NSTA field-determination geometry, matched against
+        # the full PPRS field-name universe (552 fields with production
+        # history, not just the 250 currently producing) using the same
+        # exact/normalized matcher already used for PPRS-vs-equity
+        # matching. Failure here fails the whole build.
+        field_polygon_result = fetch_field_polygon_rows(session)
+        pprs_field_universe = {entry["field"] for entry in history_index.values()}
+        polygon_field_names = {row["attributes"]["FIELDNAME"] for row in field_polygon_result["rows"]}
+        polygon_match_result = match_polygons_to_pprs(pprs_field_universe, polygon_field_names)
+        field_polygons_geojson = build_field_polygons_geojson(
+            field_polygon_result["rows"], polygon_match_result
+        )
+        latest_period_totals = {
+            f["properties"]["field"]: f["properties"].get("total_mboed")
+            for f in fields_geojson["features"]
+        }
+        polygon_unmatched_impact = unmatched_production_impact(
+            polygon_match_result["unmatched_pprs"], latest_period_totals
+        )
+        matched_count = len(polygon_match_result["exact_matches"]) + len(polygon_match_result["normalized_matches"])
+        print(
+            f"Field polygons: {field_polygon_result['record_count']} polygons fetched, "
+            f"{matched_count}/{len(pprs_field_universe)} PPRS fields matched "
+            f"({len(polygon_match_result['unmatched_pprs'])} unmatched, "
+            f"{polygon_unmatched_impact['unmatched_production_pct']}% of latest-period production)"
+        )
+
         operators_full_text_size = len(
             _json_text({"generated_from": None, "operators": {
                 slug: {**operators_index[slug], "series": operators_per_slug[slug]["series"]}
@@ -561,6 +597,25 @@ def main() -> int:
                     # docs/data/equity/meta.json - this is a summary pointer,
                     # not a duplicate of that file.
                 },
+                "company_groups": {
+                    "publisher": PUBLISHER,
+                    "item_title": group_holder_result.get("item_title"),
+                    "item_id": EQUITY_GROUP_HOLDER_ITEM_ID,
+                    "resolved_url": group_holder_result.get("resolved_url"),
+                    "last_modified": company_groups_source_timestamp,
+                    "record_count": group_holder_result.get("record_count"),
+                    # Full detail lives in docs/data/equity/groups/report.json.
+                },
+                "field_polygons": {
+                    "publisher": PUBLISHER,
+                    "item_title": field_polygon_result.get("item_title"),
+                    "item_id": FIELD_DETERMINATIONS_ITEM_ID,
+                    "resolved_url": field_polygon_result.get("resolved_url"),
+                    "record_count": field_polygon_result.get("record_count"),
+                    "matched_pprs_field_count": matched_count,
+                    "unmatched_pprs_field_count": len(polygon_match_result["unmatched_pprs"]),
+                    "unmatched_production_pct": polygon_unmatched_impact["unmatched_production_pct"],
+                },
             },
             "latest_period": latest_period,
             "earliest_period": earliest_period,
@@ -577,13 +632,17 @@ def main() -> int:
             "operator_count": operator_stats["operator_count"],
             "operators_split": operators_split,
             "schema_hash": schema_hash,
-            "artifact_schema_version": 2,
+            # Bumped to 3: adds field_polygons.geojson and
+            # docs/data/equity/groups/* (Workstreams 1 and 3, spec
+            # approved 2026-09-10) - both purely additive, no existing
+            # field renamed or removed.
+            "artifact_schema_version": 3,
             "production_conversion_methodology": PRODUCTION_CONVERSION_METHODOLOGY,
             "gas_scf_per_boe": GAS_SCF_PER_BOE,
             "notes": notes,
         }
 
-    except (ArcGISError, ValidationError, BuildError, EquityBuildError, CompanyGroupsError, ValueError) as e:
+    except (ArcGISError, ValidationError, BuildError, EquityBuildError, CompanyGroupsError, FieldPolygonsError, ValueError) as e:
         print(f"\nBUILD FAILED: {e}", file=sys.stderr)
         return 1
 
@@ -594,6 +653,7 @@ def main() -> int:
     DOCS_DATA_DIR.mkdir(parents=True, exist_ok=True)
     write_json_atomic(DOCS_DATA_DIR / "meta.json", meta)
     write_json_atomic(DOCS_DATA_DIR / "fields.geojson", fields_geojson)
+    write_json_atomic(DOCS_DATA_DIR / "field_polygons.geojson", field_polygons_geojson)
     write_history_dir_atomic(DOCS_DATA_DIR / "history", history_per_slug, history_index)
     write_equity_artifacts(
         EQUITY_DATA_DIR,

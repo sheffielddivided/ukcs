@@ -30,6 +30,10 @@ export class Map {
     }
     // Fire "load" asynchronously, like the real library does.
     setTimeout(() => this._emit("load"), 0);
+    // Test-only hook (mirrors the echarts stub's window.__echartsCharts
+    // pattern) so committed tests can reach the map instance map.js
+    // creates internally, to simulate layer click/hover events.
+    window.__lastMapInstance = this;
   }
 
   addControl() {
@@ -45,6 +49,16 @@ export class Map {
 
   _emit(event, payload) {
     for (const h of this._handlers[event] || []) h(payload);
+  }
+
+  // Test-only helper (not part of the real maplibre-gl API): fires a
+  // layer-scoped event exactly as map.js's own `map.on(event, layerId,
+  // handler)` registrations expect, so committed tests can simulate a
+  // user clicking a specific rendered feature without a real WebGL
+  // canvas or hit-testing.
+  _emitLayerEvent(event, layerId, feature) {
+    const key = `${event}:${layerId}`;
+    for (const h of this._handlers[key] || []) h({ features: [feature] });
   }
 
   addSource(id, source) {
@@ -66,6 +80,18 @@ export class Map {
   setFilter(id, filter) {
     const layer = this._layers[id];
     if (layer) layer.filter = filter;
+  }
+
+  setLayoutProperty(id, name, value) {
+    const layer = this._layers[id];
+    if (layer) {
+      layer.layout ||= {};
+      layer.layout[name] = value;
+    }
+  }
+
+  getLayoutProperty(id, name) {
+    return this._layers[id]?.layout?.[name];
   }
 
   getCanvas() {
