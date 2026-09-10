@@ -108,17 +108,35 @@ jobs:
         run: |
           PPRS_CHANGED=false
           EQUITY_CHANGED=false
+          OVERVIEW_CHANGED=false
           if ! git diff --quiet -- docs/data/fields.geojson docs/data/history docs/data/operators.json docs/data/operators; then
             PPRS_CHANGED=true
           fi
           if ! git diff --quiet -- docs/data/equity; then
             EQUITY_CHANGED=true
           fi
+          # docs/data/overview/* is entirely DERIVED from the PPRS/equity
+          # data already covered above, so normally a change there
+          # implies PPRS_CHANGED or EQUITY_CHANGED is already true - EXCEPT
+          # when an ETL code change (not an upstream data change) adds a
+          # brand-new derived artifact file, which `git diff` never
+          # reports at all regardless of path filters (it only ever sees
+          # CONTENT changes to already-tracked files, never a new
+          # untracked one). `git status --porcelain` does report new
+          # files, so it's used here specifically to catch that case -
+          # docs/data/overview/meta.json's own built_at is excluded from
+          # this check the same way the top-level meta.json's is reverted
+          # below, since it changes on every run regardless of whether
+          # anything else in overview/ actually changed.
+          overview_status="$(git status --porcelain -- docs/data/overview | grep -v 'docs/data/overview/meta\.json$' || true)"
+          if [ -n "$overview_status" ]; then
+            OVERVIEW_CHANGED=true
+          fi
           echo "pprs_changed=$PPRS_CHANGED" >> "$GITHUB_OUTPUT"
           echo "equity_changed=$EQUITY_CHANGED" >> "$GITHUB_OUTPUT"
-          if [ "$PPRS_CHANGED" = false ] && [ "$EQUITY_CHANGED" = false ]; then
+          if [ "$PPRS_CHANGED" = false ] && [ "$EQUITY_CHANGED" = false ] && [ "$OVERVIEW_CHANGED" = false ]; then
             echo "No substantive data change (only built_at would differ) - reverting meta.json, skipping commit."
-            git checkout -- docs/data/meta.json
+            git checkout -- docs/data/meta.json docs/data/overview/meta.json
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
