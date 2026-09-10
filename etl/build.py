@@ -49,6 +49,7 @@ from transform import (  # noqa: E402
 from validate import (  # noqa: E402
     ValidationError,
     check_against_previous_build,
+    compute_serialization_tolerance,
     validate_bounding_box,
     validate_derived_field_month_formula,
     validate_full_precision_conservation,
@@ -101,6 +102,17 @@ from licence_portfolio import (  # noqa: E402
     build_portfolio_by_group,
     build_portfolio_geojson,
     fetch_licence_subarea_rows,
+)
+from overview import (  # noqa: E402
+    OverviewError,
+    build_company_groups_overview,
+    build_fields_overview,
+    build_legal_entities_overview,
+    build_monthly_totals,
+    build_overview_meta,
+    validate_company_groups_overview_reconciliation,
+    validate_fields_overview_reconciliation,
+    validate_monthly_totals_reconciliation,
 )
 
 ITEM_ID_POINTS = "dd38204275a04618ab7ddd00f87224e3"
@@ -579,9 +591,46 @@ def main() -> int:
         print(
             f"Company grouping: {approved_count} approved (NSTA equity group), "
             f"{unresolved_count} unresolved (self-fallback), "
-            f"{company_groups_report['distinct_current_display_groups']} distinct display groups, "
+            f"{company_groups_report['distinct_approved_groups']} distinct APPROVED groups "
+            f"(+ {company_groups_report['unresolved_fallback_count']} unresolved singleton fallbacks), "
             f"{company_groups_report['production_weighted_current_coverage_pct']}% latest-period "
             "coverage by approved groups"
+        )
+
+        # --- Production overview compact artifacts (Deliverable 1):
+        # built entirely from data structures already computed and
+        # validated above (histories' full-precision series, the equity
+        # company docs, the company-groups mapping) - no new network
+        # access, no new source of truth for any value.
+        overview_monthly_totals = build_monthly_totals(histories)
+        validate_monthly_totals_reconciliation(overview_monthly_totals)
+
+        overview_company_groups = build_company_groups_overview(
+            equity_company_docs, company_groups_mapping
+        )
+        validate_company_groups_overview_reconciliation(equity_company_docs, overview_company_groups)
+
+        overview_legal_entities = build_legal_entities_overview(equity_company_docs)
+
+        overview_fields = build_fields_overview(histories)
+        overview_field_tolerance = compute_serialization_tolerance(
+            n_field_entries=sum(len(f["series"]) for f in overview_fields.values()),
+            n_operator_entries=len(overview_monthly_totals),
+            round_decimals=3,
+        )
+        validate_fields_overview_reconciliation(
+            overview_fields, overview_monthly_totals, tolerance=overview_field_tolerance
+        )
+
+        overview_built_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        overview_meta = build_overview_meta(
+            company_groups_report, overview_monthly_totals, equity_meta["publication_start"], overview_built_at
+        )
+        print(
+            f"Production overview: {len(overview_monthly_totals)} months of UKCS totals, "
+            f"{len(overview_company_groups)} company-split buckets "
+            f"({overview_meta['distinct_approved_groups']} approved + 1 unresolved bucket), "
+            f"{len(overview_legal_entities)} legal entities, {len(overview_fields)} fields"
         )
 
         previous_meta = load_previous_meta()
@@ -660,19 +709,19 @@ def main() -> int:
             "operator_count": operator_stats["operator_count"],
             "operators_split": operators_split,
             "schema_hash": schema_hash,
-            # Bumped to 4: adds licence_portfolio.geojson,
-            # licence_portfolio_index.json and licence_portfolio_groups/*
-            # (Workstream 4, spec approved 2026-09-10), on top of 3's
+            # Bumped to 5: adds docs/data/overview/* (Deliverable 1,
+            # production overview compact artifacts), on top of 4's
+            # licence_portfolio.geojson/index/groups (Workstream 4), 3's
             # field_polygons.geojson and docs/data/equity/groups/*
             # (Workstreams 1 and 3) - all purely additive, no existing
             # field renamed or removed.
-            "artifact_schema_version": 4,
+            "artifact_schema_version": 5,
             "production_conversion_methodology": PRODUCTION_CONVERSION_METHODOLOGY,
             "gas_scf_per_boe": GAS_SCF_PER_BOE,
             "notes": notes,
         }
 
-    except (ArcGISError, ValidationError, BuildError, EquityBuildError, CompanyGroupsError, FieldPolygonsError, LicencePortfolioError, ValueError) as e:
+    except (ArcGISError, ValidationError, BuildError, EquityBuildError, CompanyGroupsError, FieldPolygonsError, LicencePortfolioError, OverviewError, ValueError) as e:
         print(f"\nBUILD FAILED: {e}", file=sys.stderr)
         return 1
 
@@ -699,6 +748,19 @@ def main() -> int:
     write_slug_files_atomic(
         DOCS_DATA_DIR / "licence_portfolio_groups",
         {group["slug"]: group for group in licence_portfolio_by_group.values()},
+    )
+    # Production overview compact artifacts (Deliverable 1) - one atomic
+    # staging/rename per the same pattern as licence_portfolio_groups
+    # above, so a partial overview publish can never happen.
+    write_slug_files_atomic(
+        DOCS_DATA_DIR / "overview",
+        {
+            "meta": overview_meta,
+            "monthly_totals": overview_monthly_totals,
+            "company_groups": overview_company_groups,
+            "legal_entities": overview_legal_entities,
+            "fields": overview_fields,
+        },
     )
     write_history_dir_atomic(DOCS_DATA_DIR / "history", history_per_slug, history_index)
     write_equity_artifacts(

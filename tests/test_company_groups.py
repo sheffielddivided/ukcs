@@ -19,6 +19,7 @@ from etl.company_groups import (  # noqa: E402
     aggregate_company_series_by_group,
     build_company_groups_mapping,
     build_group_resolution,
+    build_grouping_review_report,
     mapping_by_entity,
     parse_eqorg_segments,
     resolve_row_holder_name,
@@ -273,3 +274,60 @@ def test_group_conservation_catches_a_real_mismatch():
         assert False, "must raise when group total does not match legal-entity total"
     except CompanyGroupsError as e:
         assert "oil_mbd" in str(e)
+
+
+# ---------------------------------------------------------------------------
+# Regression: distinct_current_display_groups must not present unresolved
+# singleton fallbacks as if they were approved company groups (spec
+# review, 2026-09-10: the figure previously read 219 when only 37 were
+# genuine NSTA-approved groups, the rest being one fallback "group" per
+# unresolved entity).
+# ---------------------------------------------------------------------------
+
+
+def test_grouping_report_separates_approved_from_unresolved_fallback_groups():
+    known = {"RESOLVED CO", "SOLO CO A", "SOLO CO B", "SOLO CO C"}
+    resolution = {"RESOLVED CO": {"groups": {"BIG GROUP": 1}, "ambiguous_row_count": 0}}
+    mapping = build_company_groups_mapping(known, resolution, "src", "2026-09-10")
+    group_docs = aggregate_company_series_by_group(
+        {e: {"series": []} for e in known},
+        {row["source_legal_entity"]: row["current_display_group"] for row in mapping},
+    )
+    report = build_grouping_review_report(mapping, group_docs, latest_period="2026-01")
+
+    # One real approved group ("BIG GROUP"); three unresolved singleton
+    # fallbacks (each entity is its own "group" of one).
+    assert report["distinct_approved_groups"] == 1
+    assert report["unresolved_fallback_count"] == 3
+    # The combined figure is retained for backward compatibility, but
+    # must never be mistaken for "distinct approved company groups".
+    assert report["distinct_current_display_groups"] == 4
+    assert report["approved_count"] == 1
+    assert report["unresolved_count"] == 3
+    assert report["reviewed_manual_mapping_count"] == 0
+    assert report["excluded_count"] == 0
+
+
+def test_grouping_report_against_real_repository_scale_bug_reproduction():
+    """Reproduces the exact real-data shape that surfaced the bug: many
+    unresolved entities, few approved groups - distinct_approved_groups
+    must be far smaller than distinct_current_display_groups."""
+    known = {f"UNRESOLVED CO {i}" for i in range(50)} | {"ENTITY A", "ENTITY B", "ENTITY C"}
+    resolution = {
+        "ENTITY A": {"groups": {"GROUP X": 1}, "ambiguous_row_count": 0},
+        "ENTITY B": {"groups": {"GROUP X": 1}, "ambiguous_row_count": 0},
+        "ENTITY C": {"groups": {"GROUP Y": 1}, "ambiguous_row_count": 0},
+    }
+    mapping = build_company_groups_mapping(known, resolution, "src", "2026-09-10")
+    group_docs = aggregate_company_series_by_group(
+        {e: {"series": []} for e in known},
+        {row["source_legal_entity"]: row["current_display_group"] for row in mapping},
+    )
+    report = build_grouping_review_report(mapping, group_docs, latest_period="2026-01")
+
+    assert report["distinct_approved_groups"] == 2  # GROUP X, GROUP Y
+    assert report["unresolved_fallback_count"] == 50
+    assert report["distinct_current_display_groups"] == 52
+    # The bug: presenting 52 as "distinct company groups" would be wrong;
+    # 2 is the real answer.
+    assert report["distinct_approved_groups"] < report["distinct_current_display_groups"]

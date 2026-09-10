@@ -554,17 +554,33 @@ def build_grouping_review_report(
     docs/data/equity/* file - not a separate hand-maintained document)."""
     approved = [r for r in mapping_rows if r["status"] == "approved"]
     unresolved = [r for r in mapping_rows if r["status"] == "unresolved"]
+    excluded = [r for r in mapping_rows if r["status"] == "excluded"]
+    reviewed_manual = [r for r in mapping_rows if r["grouping_basis"] == "reviewed manual mapping"]
     ambiguous = [
         r for r in unresolved if "conflicting EQGRPHOLD" in r["source"]
     ]
 
+    # Bug fix (spec review, 2026-09-10): "distinct_current_display_groups"
+    # previously counted EVERY distinct current_display_group value,
+    # including one singleton self-fallback "group" per unresolved
+    # entity (182 of them) alongside the real NSTA-approved groups (37 at
+    # last count) - inflating a figure that reads as "distinct company
+    # groups" to 219 when only 37 are genuine multi-entity or reviewed
+    # groupings. Approved and unresolved-fallback group names are now
+    # counted separately; neither figure is presented as the other.
+    distinct_approved_groups = {r["current_display_group"] for r in approved}
+    distinct_unresolved_fallback_groups = {r["current_display_group"] for r in unresolved}
+
     # Production-weighted current coverage: share of latest-period total
     # mboe/d (summed across every legal entity with a published latest-
     # period value) contributed by entities with an APPROVED (non-
-    # self-fallback) group mapping.
+    # self-fallback) group mapping. The unresolved complement is tracked
+    # explicitly too, rather than left to be inferred as "100 - approved"
+    # (which would silently assume latest_total has no other gaps).
     approved_entities = {r["source_legal_entity"] for r in approved}
     latest_total = 0.0
     latest_approved_total = 0.0
+    latest_unresolved_total = 0.0
     for group in group_docs.values():
         latest_point = next((p for p in group["series"] if p["period"] == latest_period), None)
         if not latest_point:
@@ -575,8 +591,13 @@ def build_grouping_review_report(
         latest_total += value
         if any(member in approved_entities for member in group["member_entities"]):
             latest_approved_total += value
+        else:
+            latest_unresolved_total += value
 
     coverage_pct = round(100.0 * latest_approved_total / latest_total, 3) if latest_total > 0 else None
+    unresolved_coverage_pct = (
+        round(100.0 * latest_unresolved_total / latest_total, 3) if latest_total > 0 else None
+    )
 
     # Historical production affected by retrospective grouping: every
     # period's total_mboed contributed by a NON-singleton group (i.e. a
@@ -605,12 +626,24 @@ def build_grouping_review_report(
     return {
         "total_legal_entities": len(mapping_rows),
         "approved_count": len(approved),
+        "reviewed_manual_mapping_count": len(reviewed_manual),
         "unresolved_count": len(unresolved),
-        "ambiguous_conflict_count": len(ambiguous),
+        "excluded_count": len(excluded),
+        # Distinct APPROVED (real, NSTA-sourced or reviewed) company
+        # groups only - never inflated by unresolved singleton fallbacks.
+        "distinct_approved_groups": len(distinct_approved_groups),
+        # Distinct unresolved-fallback "groups" (one per unresolved
+        # entity, each is just that entity's own name) - reported
+        # separately so it is never mistaken for a real grouping count.
+        "unresolved_fallback_count": len(distinct_unresolved_fallback_groups),
+        # Deprecated/retained for backward compatibility only - equals
+        # distinct_approved_groups + unresolved_fallback_count. Consumers
+        # should use the two figures above, not this combined total.
         "distinct_current_display_groups": len({r["current_display_group"] for r in mapping_rows}),
         "non_singleton_group_count": len(non_singleton_groups),
         "latest_period": latest_period,
         "production_weighted_current_coverage_pct": coverage_pct,
+        "latest_period_production_retained_under_unresolved_pct": unresolved_coverage_pct,
         "historical_production_affected_by_retrospective_grouping_pct": historical_affected_pct,
         "unresolved_entities": sorted(r["source_legal_entity"] for r in unresolved),
         "ambiguous_entities": sorted(r["source_legal_entity"] for r in ambiguous),
