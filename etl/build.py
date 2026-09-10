@@ -76,6 +76,17 @@ from production_config import (  # noqa: E402
     GAS_SCF_PER_BOE,
     PRODUCTION_CONVERSION_METHODOLOGY,
 )
+from company_groups import (  # noqa: E402
+    EQUITY_GROUP_HOLDER_ITEM_ID,
+    CompanyGroupsError,
+    aggregate_company_series_by_group,
+    build_company_groups_mapping,
+    build_group_resolution,
+    build_grouping_review_report,
+    fetch_equity_group_holder_rows,
+    load_company_groups_overrides,
+    validate_group_conservation,
+)
 
 ITEM_ID_POINTS = "dd38204275a04618ab7ddd00f87224e3"
 DATASET_NAME = "UKCS hydrocarbon field production reports PPRS points (WGS84)"
@@ -102,7 +113,9 @@ NSTA_RECONCILIATION_NOTE = (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS_DATA_DIR = REPO_ROOT / "docs" / "data"
 UNIT_CLASSIFICATION_PATH = REPO_ROOT / "etl" / "mappings" / "unit_classification.csv"
+COMPANY_GROUPS_OVERRIDES_PATH = REPO_ROOT / "etl" / "mappings" / "company_groups.csv"
 EQUITY_DATA_DIR = DOCS_DATA_DIR / "equity"
+COMPANY_GROUPS_DATA_DIR = EQUITY_DATA_DIR / "groups"
 
 OUT_FIELDS = (
     "OBJECTID,FIELDNAME,FIELDAREA,LOCATION,ORGGRPNM,UNITNAME,UNITTYPDES,"
@@ -464,6 +477,57 @@ def main() -> int:
             f"published {equity_meta['earliest_published_period']}-{equity_meta['latest_published_period']}"
         )
 
+        # --- Company grouping (Workstream 1, spec approved 2026-09-10):
+        # current display groups only, sourced primarily from NSTA's own
+        # live EQGRPHOLD field, supplemented by curated overrides in
+        # etl/mappings/company_groups.csv. Failure here fails the whole
+        # build (same discipline as the equity pipeline) - see
+        # CompanyGroupsError's own docstring.
+        group_holder_result = fetch_equity_group_holder_rows(session)
+        group_resolution = build_group_resolution(group_holder_result["rows"])
+        company_groups_overrides = load_company_groups_overrides(COMPANY_GROUPS_OVERRIDES_PATH)
+        # Uses the SOURCE's own last-modified timestamp, not a live
+        # fetch-time wall clock, so a rebuild against unchanged upstream
+        # data produces byte-identical mapping output rather than a
+        # spurious diff on every run (see fetch_equity_group_holder_rows()'s
+        # docstring) - this is what lets build-data.yml's substantive-
+        # change detection correctly no-op when nothing changed.
+        company_groups_source_timestamp = group_holder_result.get("source_last_modified") or "unknown"
+        company_groups_mapping = build_company_groups_mapping(
+            known_legal_entities=set(equity_company_docs.keys()),
+            resolution=group_resolution,
+            source_description=(
+                f"NSTA {group_holder_result.get('item_title', 'equity group holder dataset')} "
+                f"(item {EQUITY_GROUP_HOLDER_ITEM_ID}), EQGRPHOLD field, source last modified "
+                f"{company_groups_source_timestamp}"
+            ),
+            fetch_timestamp=company_groups_source_timestamp,
+            overrides=company_groups_overrides,
+        )
+        company_groups_entity_map = {
+            row["source_legal_entity"]: row["current_display_group"] for row in company_groups_mapping
+        }
+        company_group_docs = aggregate_company_series_by_group(
+            equity_company_docs, company_groups_entity_map
+        )
+        company_group_conservation = validate_group_conservation(equity_company_docs, company_group_docs)
+        print(
+            "Company-group conservation passed: "
+            + ", ".join(f"{k}={v:.2e}" for k, v in company_group_conservation.items())
+        )
+        company_groups_report = build_grouping_review_report(
+            company_groups_mapping, company_group_docs, latest_period=equity_meta["latest_published_period"]
+        )
+        approved_count = company_groups_report["approved_count"]
+        unresolved_count = company_groups_report["unresolved_count"]
+        print(
+            f"Company grouping: {approved_count} approved (NSTA equity group), "
+            f"{unresolved_count} unresolved (self-fallback), "
+            f"{company_groups_report['distinct_current_display_groups']} distinct display groups, "
+            f"{company_groups_report['production_weighted_current_coverage_pct']}% latest-period "
+            "coverage by approved groups"
+        )
+
         previous_meta = load_previous_meta()
         delta_notes = check_against_previous_build(
             previous_meta,
@@ -519,7 +583,7 @@ def main() -> int:
             "notes": notes,
         }
 
-    except (ArcGISError, ValidationError, BuildError, EquityBuildError, ValueError) as e:
+    except (ArcGISError, ValidationError, BuildError, EquityBuildError, CompanyGroupsError, ValueError) as e:
         print(f"\nBUILD FAILED: {e}", file=sys.stderr)
         return 1
 
@@ -531,10 +595,20 @@ def main() -> int:
     write_json_atomic(DOCS_DATA_DIR / "meta.json", meta)
     write_json_atomic(DOCS_DATA_DIR / "fields.geojson", fields_geojson)
     write_history_dir_atomic(DOCS_DATA_DIR / "history", history_per_slug, history_index)
-    write_equity_artifacts(EQUITY_DATA_DIR, equity_meta, equity_index, equity_company_docs, equity_field_docs, equity_anomalies)
+    write_equity_artifacts(
+        EQUITY_DATA_DIR,
+        equity_meta,
+        equity_index,
+        equity_company_docs,
+        equity_field_docs,
+        equity_anomalies,
+        group_docs=company_group_docs,
+        groups_report=company_groups_report,
+        groups_mapping=company_groups_mapping,
+    )
     print(
         f"Wrote {EQUITY_DATA_DIR} ({len(equity_company_docs)} company files, "
-        f"{len(equity_field_docs)} field files)"
+        f"{len(equity_field_docs)} field files, {len(company_group_docs)} group files)"
     )
 
     operators_doc = {

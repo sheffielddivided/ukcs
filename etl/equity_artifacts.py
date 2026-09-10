@@ -539,7 +539,17 @@ def _json_text(data: object) -> str:
     return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
 
 
-def write_equity_artifacts(equity_dir: Path, meta: dict, index: dict, company_docs: dict, field_docs: dict, anomalies: dict) -> None:
+def write_equity_artifacts(
+    equity_dir: Path,
+    meta: dict,
+    index: dict,
+    company_docs: dict,
+    field_docs: dict,
+    anomalies: dict,
+    group_docs: dict | None = None,
+    groups_report: dict | None = None,
+    groups_mapping: list[dict] | None = None,
+) -> None:
     staging_dir = equity_dir.with_name(equity_dir.name + ".tmp")
     if staging_dir.exists():
         shutil.rmtree(staging_dir)
@@ -554,6 +564,27 @@ def write_equity_artifacts(equity_dir: Path, meta: dict, index: dict, company_do
         (staging_dir / "companies" / f"{doc['slug']}.json").write_text(_json_text(doc), encoding="utf-8")
     for field, doc in field_docs.items():
         (staging_dir / "fields" / f"{doc['slug']}.json").write_text(_json_text(doc), encoding="utf-8")
+
+    # Company grouping (Workstream 1, spec approved 2026-09-10) - written
+    # into the SAME atomic staging directory as every other equity
+    # artifact above, so a company-group publish can never land
+    # inconsistently with the legal-entity artifacts it was derived from
+    # (one staging dir, one atomic rename, all-or-nothing).
+    if group_docs is not None:
+        (staging_dir / "groups").mkdir(parents=True)
+        group_index = {
+            doc["slug"]: {
+                "name": doc["name"],
+                "member_entities": doc["member_entities"],
+                "is_singleton": doc["is_singleton"],
+            }
+            for doc in group_docs.values()
+        }
+        (staging_dir / "groups" / "index.json").write_text(_json_text(group_index), encoding="utf-8")
+        (staging_dir / "groups" / "report.json").write_text(_json_text(groups_report), encoding="utf-8")
+        (staging_dir / "groups" / "mapping.json").write_text(_json_text(groups_mapping), encoding="utf-8")
+        for doc in group_docs.values():
+            (staging_dir / "groups" / f"{doc['slug']}.json").write_text(_json_text(doc), encoding="utf-8")
 
     if equity_dir.exists():
         shutil.rmtree(equity_dir)

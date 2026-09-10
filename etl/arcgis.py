@@ -96,12 +96,24 @@ def _request_json(session: requests.Session, url: str, params: dict) -> dict:
     raise ArcGISError(f"Exhausted retries fetching {url}") from last_exc
 
 
+def fetch_item_metadata(item_id: str, session: requests.Session | None = None) -> dict:
+    """Fetch an ArcGIS Online item's full metadata dict (title, url,
+    modified epoch-ms timestamp, etc). Callers that need the item's own
+    `modified` timestamp for provenance/change-detection (rather than a
+    live fetch-time wall clock, which would make a rebuild's output
+    non-deterministic in content even when nothing upstream changed -
+    see etl/company_groups.py) should use this instead of
+    resolve_service_url(), which only returns the bare URL."""
+    session = session or requests.Session()
+    url = SHARING_REST_ITEM_URL.format(item_id=item_id)
+    return _request_json(session, url, {})
+
+
 def resolve_service_url(item_id: str, session: requests.Session | None = None) -> str:
     """Resolve an ArcGIS Online item ID to its service root URL. Never
     hardcode the result - services move (spec section 4)."""
     session = session or requests.Session()
-    url = SHARING_REST_ITEM_URL.format(item_id=item_id)
-    item = _request_json(session, url, {})
+    item = fetch_item_metadata(item_id, session=session)
     service_url = item.get("url")
     if not service_url:
         raise ArcGISError(
