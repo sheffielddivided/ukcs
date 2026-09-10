@@ -250,11 +250,21 @@ export function initMap(containerId, fieldsGeojsonRaw, onFieldClick, fieldPolygo
             "none", "#898781",
             "#5b6b7a", // unmatched polygon - no commodity property at all
           ],
+          // A style expression may contain only ONE zoom-based
+          // interpolate/step subexpression in total (MapLibre style-spec
+          // restriction - two independent `interpolate`s on `["zoom"]`
+          // wrapped in a `case`, as this used to be written, is REJECTED
+          // at addLayer() time; the layer then silently never gets added
+          // at all, which is why polygons rendered with no fill whatsoever
+          // rather than merely a subtly wrong opacity). `case` itself is
+          // not zoom-based, so wrapping it *inside* the interpolate's stop
+          // values - one interpolate total - is the valid form.
           "fill-opacity": [
-            "case",
-            ["has", "commodity"],
-            ["interpolate", ["linear"], ["zoom"], POLYGON_PROMINENT_MIN_ZOOM - 2, 0.3, POLYGON_PROMINENT_MIN_ZOOM, 0.75],
-            ["interpolate", ["linear"], ["zoom"], POLYGON_PROMINENT_MIN_ZOOM - 2, 0.05, POLYGON_PROMINENT_MIN_ZOOM, 0.18],
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            POLYGON_PROMINENT_MIN_ZOOM - 2, ["case", ["has", "commodity"], 0.3, 0.05],
+            POLYGON_PROMINENT_MIN_ZOOM, ["case", ["has", "commodity"], 0.75, 0.18],
           ],
         },
       });

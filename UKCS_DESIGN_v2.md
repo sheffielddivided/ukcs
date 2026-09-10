@@ -2156,3 +2156,29 @@ fixture's `murlach-pt-of-marnock-skua` field (which the existing `field_polygons
 never matched to a polygon) as the fallback case. The `maplibre-gl.mjs` test stub's `Popup` class
 was extended with `window.__lastPopupHtml`/`window.__lastPopupOpen` test hooks (mirroring the
 `window.__echartsCharts` pattern) since it previously exposed no state a test could assert on.
+
+**Follow-up defect, same day**: reported live as "the polygons are not filled with color." Root
+cause: `fill-opacity` was written as `["case", ["has","commodity"], interpolateA, interpolateB]` -
+two independent `interpolate`-on-`["zoom"]` subexpressions inside one paint property. MapLibre's
+style-spec validator rejects any expression containing more than one zoom-based interpolate/step
+subexpression in total, so `map.addLayer()` for `field-polygons-fill` failed validation and the
+layer was never added at all (silently - only a `map.on("error", ...)` listener would have
+surfaced it, and none was wired up) - not a subtly-wrong opacity, a completely absent layer, which
+is why zero polygons showed any fill. Fixed by moving the `case` *inside* the `interpolate`'s stop
+values instead (one `interpolate`, `case` is not itself zoom-based) - the mathematically equivalent
+form this file's own commit history shows was deliberately, incorrectly "corrected" away from
+earlier in the same session.
+
+**The real finding (again)**: none of this suite's tests caught it, because `tests/frontend`'s
+maplibre-gl stub (`fixtures/stubs/maplibre-gl.mjs`) implements `addLayer()` as an unconditional
+no-op store - it performs no style-spec validation at all, so an invalid paint expression looks
+identical to a valid one from every committed test's point of view. This is the same class of gap
+as 17.6 (a stubbed/unstyled test harness structurally unable to see a real rendering defect), not
+yet closed here: doing so would mean either running against the real (network-fetched) maplibre-gl
+bundle for at least this one property, or vendoring `@maplibre/maplibre-gl-style-spec`'s validator
+into this repo's toolchain - both real additions to the frontend test suite's scope, left as a
+follow-up rather than done speculatively alongside this fix. Verified instead by a one-off local
+repro: served `docs/` with the real (CDN-fetched) `maplibre-gl` bundle and the real published
+`fields.geojson`/`field_polygons.geojson` against headless Chromium with software WebGL
+(`--use-gl=swiftshader`), confirming `map.on("error", ...)` fired the style-spec rejection before
+the fix and that matched polygons render with real oil/gas-coloured fill after it.
