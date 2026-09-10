@@ -95,6 +95,13 @@ from field_polygons import (  # noqa: E402
     match_polygons_to_pprs,
     unmatched_production_impact,
 )
+from licence_portfolio import (  # noqa: E402
+    LICENCE_SUBAREAS_ITEM_ID,
+    LicencePortfolioError,
+    build_portfolio_by_group,
+    build_portfolio_geojson,
+    fetch_licence_subarea_rows,
+)
 
 ITEM_ID_POINTS = "dd38204275a04618ab7ddd00f87224e3"
 DATASET_NAME = "UKCS hydrocarbon field production reports PPRS points (WGS84)"
@@ -457,6 +464,19 @@ def main() -> int:
             f"{polygon_unmatched_impact['unmatched_production_pct']}% of latest-period production)"
         )
 
+        # --- Current licence portfolio (Workstream 4, spec approved
+        # 2026-09-10): same NSTA service as company grouping, kept at
+        # subarea grain with full detail + geometry this time. Grouped
+        # directly by each row's own EQGRPHOLD - no percentage-matching
+        # disambiguation needed here (unlike company_groups.py).
+        licence_subarea_result = fetch_licence_subarea_rows(session)
+        licence_portfolio_by_group = build_portfolio_by_group(licence_subarea_result["rows"])
+        licence_portfolio_geojson = build_portfolio_geojson(licence_subarea_result["rows"])
+        print(
+            f"Licence portfolio: {licence_subarea_result['record_count']} subarea-holder rows, "
+            f"{len(licence_portfolio_by_group)} distinct current display groups"
+        )
+
         operators_full_text_size = len(
             _json_text({"generated_from": None, "operators": {
                 slug: {**operators_index[slug], "series": operators_per_slug[slug]["series"]}
@@ -616,6 +636,14 @@ def main() -> int:
                     "unmatched_pprs_field_count": len(polygon_match_result["unmatched_pprs"]),
                     "unmatched_production_pct": polygon_unmatched_impact["unmatched_production_pct"],
                 },
+                "licence_portfolio": {
+                    "publisher": PUBLISHER,
+                    "item_title": licence_subarea_result.get("item_title"),
+                    "item_id": LICENCE_SUBAREAS_ITEM_ID,
+                    "resolved_url": licence_subarea_result.get("resolved_url"),
+                    "record_count": licence_subarea_result.get("record_count"),
+                    "distinct_current_display_groups": len(licence_portfolio_by_group),
+                },
             },
             "latest_period": latest_period,
             "earliest_period": earliest_period,
@@ -632,17 +660,19 @@ def main() -> int:
             "operator_count": operator_stats["operator_count"],
             "operators_split": operators_split,
             "schema_hash": schema_hash,
-            # Bumped to 3: adds field_polygons.geojson and
-            # docs/data/equity/groups/* (Workstreams 1 and 3, spec
-            # approved 2026-09-10) - both purely additive, no existing
+            # Bumped to 4: adds licence_portfolio.geojson,
+            # licence_portfolio_index.json and licence_portfolio_groups/*
+            # (Workstream 4, spec approved 2026-09-10), on top of 3's
+            # field_polygons.geojson and docs/data/equity/groups/*
+            # (Workstreams 1 and 3) - all purely additive, no existing
             # field renamed or removed.
-            "artifact_schema_version": 3,
+            "artifact_schema_version": 4,
             "production_conversion_methodology": PRODUCTION_CONVERSION_METHODOLOGY,
             "gas_scf_per_boe": GAS_SCF_PER_BOE,
             "notes": notes,
         }
 
-    except (ArcGISError, ValidationError, BuildError, EquityBuildError, CompanyGroupsError, FieldPolygonsError, ValueError) as e:
+    except (ArcGISError, ValidationError, BuildError, EquityBuildError, CompanyGroupsError, FieldPolygonsError, LicencePortfolioError, ValueError) as e:
         print(f"\nBUILD FAILED: {e}", file=sys.stderr)
         return 1
 
@@ -654,6 +684,22 @@ def main() -> int:
     write_json_atomic(DOCS_DATA_DIR / "meta.json", meta)
     write_json_atomic(DOCS_DATA_DIR / "fields.geojson", fields_geojson)
     write_json_atomic(DOCS_DATA_DIR / "field_polygons.geojson", field_polygons_geojson)
+    write_json_atomic(DOCS_DATA_DIR / "licence_portfolio.geojson", licence_portfolio_geojson)
+    licence_portfolio_index = {
+        group["slug"]: {
+            "name": group["name"],
+            "distinct_licence_count": group["distinct_licence_count"],
+            "distinct_subarea_count": group["distinct_subarea_count"],
+            "operated_count": group["operated_count"],
+            "non_operated_count": group["non_operated_count"],
+        }
+        for group in licence_portfolio_by_group.values()
+    }
+    write_json_atomic(DOCS_DATA_DIR / "licence_portfolio_index.json", licence_portfolio_index)
+    write_slug_files_atomic(
+        DOCS_DATA_DIR / "licence_portfolio_groups",
+        {group["slug"]: group for group in licence_portfolio_by_group.values()},
+    )
     write_history_dir_atomic(DOCS_DATA_DIR / "history", history_per_slug, history_index)
     write_equity_artifacts(
         EQUITY_DATA_DIR,
