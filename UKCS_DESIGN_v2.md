@@ -2330,8 +2330,12 @@ By field split's own Top N (neither of these was asked to grow one):
 Both surface a "(top N shown, rest grouped as Other)"-style note in `#production-summary`.
 
 Tested in `tests/frontend/test_production_frontend.py`
-(`test_single_company_field_breakdown_caps_to_top_6_plus_other`,
-`test_multiple_companies_capped_to_top_6_plus_other_companies`) - both needed `page.route()`
-overrides of `company_groups_field_breakdown.json`/`company_groups.json` with more than 6
+(`test_single_company_field_breakdown_caps_to_top_10_plus_other`,
+`test_multiple_companies_capped_to_top_10_plus_other_companies`) - both needed `page.route()`
+overrides of `company_groups_field_breakdown.json`/`company_groups.json` with more than 10
 entries, since the shared default fixture only has 2 fields/groups (not enough to exercise
 capping without disturbing every other test that already depends on its exact shape/values).
+
+**Follow-up, same day**: requested "show the 10 largest fields instead of only 6" (applies to both
+call sites, same `TOP_N_DEFAULT` constant) - `TOP_N_DEFAULT` changed from `6` to `10`, and both
+regression tests above were rebuilt with >10-entry fixtures (was >6) to keep exercising the cap.

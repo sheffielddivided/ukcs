@@ -252,11 +252,11 @@ def test_single_legal_entity_selection_has_no_by_field_option(load_app):
     assert names == {"Liquids", "Natural gas"}
 
 
-def test_single_company_field_breakdown_caps_to_top_6_plus_other(load_app, page):
+def test_single_company_field_breakdown_caps_to_top_10_plus_other(load_app, page):
     """Regression test (2026-09-10 continuation): a company with more
-    than 6 fields must show only its 6 largest (by latest total_mboed),
+    than 10 fields must show only its 10 largest (by latest total_mboed),
     the rest folded into one "Other fields" bar - defined the same
-    subtractive way (company total minus displayed top 6) as the
+    subtractive way (company total minus displayed top 10) as the
     UKCS-wide By field split's own "Other fields", so it reconciles
     exactly regardless of how many fields are excluded."""
 
@@ -275,14 +275,14 @@ def test_single_company_field_breakdown_caps_to_top_6_plus_other(load_app, page)
             ],
         }
 
+    top_field_values = [
+        ("FIELD 1", 1.5), ("FIELD 2", 1.2), ("FIELD 3", 1.0), ("FIELD 4", 0.9), ("FIELD 5", 0.8),
+        ("FIELD 6", 0.7), ("FIELD 7", 0.6), ("FIELD 8", 0.5), ("FIELD 9", 0.4), ("FIELD 10", 0.3),
+    ]
+    excluded_field_values = [("FIELD 11", 0.2), ("FIELD 12", 0.1)]
     breakdown = {
         "Alpha Group": {
-            name: _flat_field_doc(name, v)
-            for name, v in [
-                ("ALPHA FIELD", 2.5), ("BETA FIELD", 1.8), ("DELTA FIELD", 1.2),
-                ("EPSILON FIELD", 0.8), ("ZETA FIELD", 0.4), ("ETA FIELD", 0.3),
-                ("THETA FIELD", 0.2), ("IOTA FIELD", 0.1),
-            ]
+            name: _flat_field_doc(name, v) for name, v in top_field_values + excluded_field_values
         }
     }
     page.route(
@@ -299,24 +299,22 @@ def test_single_company_field_breakdown_caps_to_top_6_plus_other(load_app, page)
 
     option = page.evaluate("() => window.__echartsCharts['production-chart']")
     series_by_name = {s["name"]: s["data"] for s in option["series"]}
-    assert set(series_by_name) == {
-        "ALPHA FIELD", "BETA FIELD", "DELTA FIELD", "EPSILON FIELD", "ZETA FIELD", "ETA FIELD", "Other fields",
-    }
-    assert "THETA FIELD" not in series_by_name
-    assert "IOTA FIELD" not in series_by_name
+    assert set(series_by_name) == {name for name, _ in top_field_values} | {"Other fields"}
+    assert "FIELD 11" not in series_by_name
+    assert "FIELD 12" not in series_by_name
     # Other fields = Alpha Group's own published total_mboed (8.0/8.5/9.5)
-    # minus the top-6 sum (7.0 every period: 2.5+1.8+1.2+0.8+0.4+0.3),
-    # annual-averaged: (1.0+1.5+2.5)/3.
-    assert series_by_name["Other fields"][0] == pytest.approx(1.667, abs=0.001)
-    assert "top 6 shown, rest grouped as Other" in page.locator("#production-summary").text_content()
+    # minus the top-10 sum (7.9 every period), annual-averaged:
+    # ((8.0-7.9)+(8.5-7.9)+(9.5-7.9))/3 = (0.1+0.6+1.6)/3.
+    assert series_by_name["Other fields"][0] == pytest.approx(0.767, abs=0.001)
+    assert "top 10 shown, rest grouped as Other" in page.locator("#production-summary").text_content()
     assert_no_forbidden_requests(page)
 
 
-def test_multiple_companies_capped_to_top_6_plus_other_companies(load_app, page):
+def test_multiple_companies_capped_to_top_10_plus_other_companies(load_app, page):
     """Regression test (2026-09-10 continuation): showing every company
-    (no single selection) must cap the chart to the 6 largest by latest
-    total_mboed, folding the rest into one "Other companies" bar - a
-    DIRECT sum of the excluded companies' own totals (there is no
+    (no single selection) must cap the chart to the 10 largest by
+    latest total_mboed, folding the rest into one "Other companies" bar
+    - a DIRECT sum of the excluded companies' own totals (there is no
     independent grand total at this grain to reconcile subtractively
     against, unlike the field-breakdown case)."""
 
@@ -335,6 +333,11 @@ def test_multiple_companies_capped_to_top_6_plus_other_companies(load_app, page)
             ],
         }
 
+    # Ranked by latest (202403) total_mboed: Alpha Group (9.5) > NewCo1..9
+    # (7.0 down to 2.05) - the top 10 - then NewCo10 Group (1.9) and
+    # Unresolved legal entities (1.8) - the 2 excluded, folded into
+    # "Other companies".
+    top_new_co_values = [7.0, 6.0, 5.0, 4.0, 3.0, 2.5, 2.2, 2.1, 2.05]
     groups = {
         "Alpha Group": {
             "member_entities": ["Alpha Co A", "Alpha Co B"],
@@ -354,12 +357,11 @@ def test_multiple_companies_capped_to_top_6_plus_other_companies(load_app, page)
                 {"period": "202403", "liquids_mboed": {"value": 1.2, "status": "complete"}, "natural_gas_mboed": {"value": 0.6, "status": "complete"}, "total_mboed": {"value": 1.8, "status": "complete"}},
             ],
         },
-        "NewCo1 Group": _flat_group_doc(7.0, "NewCo1 Co"),
-        "NewCo2 Group": _flat_group_doc(6.0, "NewCo2 Co"),
-        "NewCo3 Group": _flat_group_doc(5.0, "NewCo3 Co"),
-        "NewCo4 Group": _flat_group_doc(4.0, "NewCo4 Co"),
-        "NewCo5 Group": _flat_group_doc(3.0, "NewCo5 Co"),
-        "NewCo6 Group": _flat_group_doc(2.0, "NewCo6 Co"),
+        **{
+            f"NewCo{i} Group": _flat_group_doc(v, f"NewCo{i} Co")
+            for i, v in enumerate(top_new_co_values, start=1)
+        },
+        "NewCo10 Group": _flat_group_doc(1.9, "NewCo10 Co"),
     }
     page.route(
         "**/data/overview/company_groups.json",
@@ -374,17 +376,15 @@ def test_multiple_companies_capped_to_top_6_plus_other_companies(load_app, page)
     assert page.locator("#production-category-toggle").is_hidden()
     option = page.evaluate("() => window.__echartsCharts['production-chart']")
     series_by_name = {s["name"]: s["data"] for s in option["series"]}
-    assert set(series_by_name) == {
-        "Alpha Group", "NewCo1 Group", "NewCo2 Group", "NewCo3 Group", "NewCo4 Group", "NewCo5 Group",
-        "Other companies",
-    }
-    assert "NewCo6 Group" not in series_by_name
+    expected_top = {"Alpha Group"} | {f"NewCo{i} Group" for i in range(1, 10)}
+    assert set(series_by_name) == expected_top | {"Other companies"}
+    assert "NewCo10 Group" not in series_by_name
     assert "Unresolved legal entities" not in series_by_name
-    # Other companies = NewCo6 Group (2.0 every period) + Unresolved
+    # Other companies = NewCo10 Group (1.9 every period) + Unresolved
     # legal entities (1.5/1.5/1.8), summed per month then annual-averaged:
-    # ((2.0+1.5)+(2.0+1.5)+(2.0+1.8)) / 3 = 3.6.
-    assert series_by_name["Other companies"][0] == pytest.approx(3.6, abs=0.001)
-    assert "top 6 of 8 shown" in page.locator("#production-summary").text_content()
+    # ((1.9+1.5)+(1.9+1.5)+(1.9+1.8)) / 3 = 3.5.
+    assert series_by_name["Other companies"][0] == pytest.approx(3.5, abs=0.001)
+    assert "top 10 of 12 shown" in page.locator("#production-summary").text_content()
     assert_no_forbidden_requests(page)
 
 

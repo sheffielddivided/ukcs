@@ -27,10 +27,10 @@ const COLORS = [
 
 // Applies to both "By company" (all companies shown) and a single
 // company's own "By field" breakdown (spec 2026-09-10 continuation:
-// "show only the 6 largest ... group the rest as Other") - fixed, not
+// "show only the 10 largest ... group the rest as Other") - fixed, not
 // user-selectable like the UKCS-wide By field split's own Top N
 // control, since neither of these was asked to grow that control.
-const TOP_N_DEFAULT = 6;
+const TOP_N_DEFAULT = 10;
 
 // Ranks {name, series} entries by latest-available total_mboed value
 // (same defensible "rank by latest known figure, not cumulative
