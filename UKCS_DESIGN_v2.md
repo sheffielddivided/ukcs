@@ -1798,3 +1798,77 @@ not listed in section 6 — mass, volume and density variants of oil/gas/condens
 `GASFLARNH`, `GASVENTVOL`, `GASVENTDEN`, `GASVENTNH`, `INJWATVOL`, `INJWATMBD`, `REINJWATVO`. These
 are available on the live layer and were catalogued during discovery but are out of scope for
 Phase 1 and Phase 2, which use only the mb/d and MMscf/d production fields listed in section 6.
+
+---
+
+## 17. Phase 3 discovery and architecture (v2.10, 2026-09-10)
+
+**Discovery only — not approved for implementation.** This section summarises
+`etl/phase3_discovery_report.md`, the full discovery report for five proposed Phase 3 workstreams:
+production-unit aggregation to mboe/d, a new default production-analysis view, company grouping,
+field-determination polygons, and licence-portfolio mapping. Read the full report for live evidence,
+numbers, and citations — this section is a pointer and summary, not a restatement.
+
+No code was changed to produce it. `etl/build.py` is untouched, no artifact under `docs/data/` was
+modified, no conversion factor was selected in code, no polygon or licence data was ingested, no
+company groups were created, and the frontend was not altered. Everything below is a proposal
+pending explicit approval, not a settled decision.
+
+**What was found, in brief:**
+
+- **Conversion factor (Workstream A).** The existing `GAS_MSCF_PER_BOE = 5.8` in `docs/app/map.js`
+  (marker-sizing only) is itself undocumented in the way section 8.4 warns against. NSTA's own PPRS
+  source carries real calorific-value data (`GASPIPCV`, MJ/sm3) for pipeline gas only, and live
+  values range 42.3–64.3 MJ/sm3 across five real fields in one period — real, source-confirmed
+  evidence that any single constant discards genuine per-field variation. Two documented conventions
+  were compared (6,000 scf/boe industry convention; an EIA-heat-content-sourced ≈5,598 scf/boe
+  figure) with a recommendation toward the industry convention for market comparability, but the
+  actual choice is an open decision (report section 12, item 1).
+- **Derived production model (Workstream B).** `liquids_mboed`/`natural_gas_mboed`/`total_mboed`
+  should be ETL-derived, not frontend-calculated, extending `fields.geojson`, `history/{slug}.json`,
+  and `operators*.json`. The equity artifacts' `{value, status, coverage_pct}` coverage-state model
+  needs its own, separate, not-yet-resolved combination rule before any equity-side implementation.
+- **Company grouping (Workstream C).** Inventoried 292 equity legal entities, 50 operators, and
+  147–156 licence-derived entities (369 distinct names across all sources). Found that NSTA's own
+  live `subareas_equity` service already carries a current-state equity-group taxonomy
+  (`EQGRPHOLD`) that cleanly resolves 130 of 147 currently-licence-holding entities into 51 groups
+  with zero contradictions — the strongest available source for the proposed reviewed-mapping
+  schema (`source_legal_entity` / `display_group` / `valid_from` / `valid_to` / `grouping_basis` /
+  `source` / `reviewed_by` / `reviewed_on`), though it says nothing about the ~145 equity-only
+  entities with no current licence interest. Confirmed with a real example (a single company number,
+  `01006065`, trading as Getty Oil → Texaco Britain → later Unocal, now Chevron Britain, on one
+  real block) why applying today's group to historical production would misattribute it — the same
+  distortion the existing operator view's retrospective-attribution caveat already exists to warn
+  about.
+- **Field-determination polygons (Workstream D).** Resolved the authoritative item (`UKCS petroleum
+  field determinations (WGS84)`, item `bef8788b07464a7f8a18a18eb638b9f5`, 344 current-status
+  polygons, NSTA Open User Licence). Live match rate: 89.2% against latest-period producing fields,
+  58.0% against all-history PPRS field names. Nearly all latest-period mismatches trace to the same
+  reporting-unit-vs-field grain problem already documented in section 7 (many PPRS sub-units share
+  one parent determination, e.g. `BRAE-CENTRAL`/`BRAE-SOUTH` → `Brae`), leaving 9 genuinely unmatched
+  fields for manual review. The full dataset is a measured 324 KB uncompressed / 90 KB gzipped — no
+  simplification pass was needed to reach that figure. Confirmed via the PPRS polygon layer (136,789
+  rows, reporting-unit-and-period grain) that it remains unsuitable as a formal field outline, as
+  section 16 above already anticipated.
+- **Licence portfolios, current and historical (Workstreams E and the historical-feasibility
+  question).** Resolved all five requested datasets. Only `subareas_equity` (1,803 rows) carries a
+  real equity percentage, and only as a current-state snapshot with no historical variant. Only
+  `blocks_history` (8,886 rows) reconstructs historical detail, and only at the **name** level
+  (`LICHISNAME`/`OPHISNAMES` with real date ranges) — historical equity percentage cannot be
+  reconstructed at subarea level from any source found. Subareas (not blocks, not full licences) are
+  recommended as the default geometry grain, since blocks carry no equity-holder detail and licences
+  are coarser than the equity structure they'd need to represent.
+- **New default-view architecture.** Proposed, not built: a new default Production overview view
+  (stacked Liquids/Natural-gas mboe/d, company/field split modes and filters, reusing the equity
+  view's already-proven lazy-loading/URL-state/accessibility patterns from `equity.js`/
+  `urlstate.js`/`search.js`), with the existing map interface retained as a secondary view, and a
+  new Licence portfolio view alongside the existing Company/Field detail and Methodology views.
+
+**Nine explicit unresolved decisions require approval before any implementation** (report section
+12) — foremost among them the conversion-factor choice (blocks Workstream B, which blocks the new
+default view) and the equity coverage-state combination rule. See `etl/phase3_discovery_report.md`
+sections 8–12 for the full dependency graph, principal methodological risks, recommended
+implementation sequence, and required tests per workstream.
+
+**Status: discovery and architecture complete for all five workstreams. Nothing in this section is
+approved for implementation.**
