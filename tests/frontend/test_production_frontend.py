@@ -26,7 +26,12 @@ def test_production_is_the_default_view_on_a_plain_load(load_app):
 
 
 def test_default_split_is_commodity_stacked_with_total_overlay(load_app):
-    page = load_app("")
+    # Explicit pfreq=monthly - annual average is the default frequency
+    # (2026-09-10 continuation, see test_annual_average_is_the_default_
+    # frequency_on_a_plain_load below); this test is about the SPLIT
+    # default (commodity), so it pins frequency to keep asserting the
+    # original three-month series.
+    page = load_app("pfreq=monthly")
     page.wait_for_selector("#production-stats details")
     option = page.evaluate("() => window.__echartsCharts['production-chart']")
     names = [s["name"] for s in option["series"]]
@@ -36,31 +41,43 @@ def test_default_split_is_commodity_stacked_with_total_overlay(load_app):
     assert option["series"][2]["data"] == [15.0, 16.0, 18.0]
 
 
-def test_annual_average_toggle_aggregates_the_commodity_split(load_app):
+def test_annual_average_is_the_default_frequency_on_a_plain_load(load_app):
+    """Regression test (2026-09-10 continuation): annual average must be
+    selected by default, with no `pfreq` param needed in the URL - a
+    plain load already shows one averaged point per year, matching the
+    "annual" radio being pre-checked."""
     page = load_app("")
     page.wait_for_selector("#production-stats details")
-    page.check('input[name="pfreq"][value="annual"]')
-    page.wait_for_timeout(200)
-    assert "pfreq=annual" in page.url
+    assert "pfreq=" not in page.url
+    assert page.locator('input[name="pfreq"][value="annual"]').is_checked()
     option = page.evaluate("() => window.__echartsCharts['production-chart']")
     # All three fixture months (202401-202403) fall in 2024, so the
-    # annual toggle must collapse them into exactly one averaged point.
+    # default annual grain must collapse them into exactly one averaged
+    # point, with no further interaction required.
     assert option["xAxis"]["data"] == ["2024"]
     liquids, gas, total = (s["data"] for s in option["series"])
     assert liquids == [11.0]  # (10+11+12)/3
     assert gas == [pytest.approx(5.333, abs=0.001)]  # (5+5+6)/3
     assert total == [pytest.approx(16.333, abs=0.001)]  # (15+16+18)/3
-    assert "Annual average" in page.locator("#production-active-filters").text_content()
+    # Annual being the DEFAULT means it is never called out as an active
+    # (non-default) filter - only explicitly choosing Monthly is.
+    assert "Annual average" not in page.locator("#production-active-filters").text_content()
 
 
-def test_switching_back_to_monthly_restores_the_original_series(load_app):
-    page = load_app("psplit=commodity&pfreq=annual")
+def test_switching_to_monthly_shows_the_original_series_and_is_recorded_in_the_url(load_app):
+    page = load_app("psplit=commodity")
     page.wait_for_selector("#production-stats details")
     page.check('input[name="pfreq"][value="monthly"]')
     page.wait_for_timeout(200)
-    assert "pfreq=" not in page.url
+    assert "pfreq=monthly" in page.url  # the non-default choice is the one written
+    assert "Monthly" in page.locator("#production-active-filters").text_content()
     option = page.evaluate("() => window.__echartsCharts['production-chart']")
     assert option["series"][2]["data"] == [15.0, 16.0, 18.0]
+
+    # Switching back to annual (the default) clears pfreq from the URL.
+    page.check('input[name="pfreq"][value="annual"]')
+    page.wait_for_timeout(200)
+    assert "pfreq=" not in page.url
 
 
 def test_annual_average_field_split_still_reconciles_to_total(load_app):
@@ -149,8 +166,92 @@ def test_selecting_a_company_group_shows_drill_down_detail(load_app):
     assert "Alpha Co B" in text
 
 
-def test_field_split_top_n_plus_other_reconciles_to_ukcs_total(load_app):
+# --- Single-company category split (2026-09-10 continuation) -------------
+# Selecting exactly one company in "By company" used to leave the chart
+# showing a single undifferentiated Total bar. It must now split into
+# categories - By field (default) or Oil vs Gas.
+
+
+def test_single_company_selection_defaults_to_by_field_breakdown(load_app):
     page = load_app("")
+    page.wait_for_selector("#production-stats details")
+    page.click('button[data-split="company"]')
+    page.wait_for_timeout(200)
+    page.select_option("#pf-company", "Alpha Group")
+    page.wait_for_timeout(400)  # extra async fetch (company_groups_field_breakdown.json)
+
+    assert "pcat=" not in page.url  # by field is the default, no URL param needed
+    category_box = page.locator("#production-category-toggle")
+    assert not category_box.is_hidden()
+    assert category_box.locator('input[name="pcat"][value="field"]').is_checked()
+
+    option = page.evaluate("() => window.__echartsCharts['production-chart']")
+    series_by_name = {s["name"]: s["data"] for s in option["series"]}
+    assert set(series_by_name) == {"ALPHA FIELD", "BETA FIELD"}
+    # Annual average is ALSO the default - one point per year (2024), and
+    # the two fields' averaged values must sum to Alpha Group's own
+    # averaged total ((8.0+8.5+9.5)/3 = 8.667 mboe/d).
+    assert option["xAxis"]["data"] == ["2024"]
+    assert series_by_name["ALPHA FIELD"][0] + series_by_name["BETA FIELD"][0] == pytest.approx(8.667, abs=0.001)
+
+
+def test_single_company_selection_can_switch_to_oil_vs_gas(load_app):
+    page = load_app("")
+    page.wait_for_selector("#production-stats details")
+    page.click('button[data-split="company"]')
+    page.wait_for_timeout(200)
+    page.select_option("#pf-company", "Alpha Group")
+    page.wait_for_timeout(400)
+
+    page.check('input[name="pcat"][value="commodity"]')
+    page.wait_for_timeout(200)
+    assert "pcat=commodity" in page.url
+    assert "Oil vs Gas" in page.locator("#production-active-filters").text_content()
+
+    option = page.evaluate("() => window.__echartsCharts['production-chart']")
+    series_by_name = {s["name"]: s["data"] for s in option["series"]}
+    assert set(series_by_name) == {"Liquids", "Natural gas"}
+    # Alpha Group's own liquids/gas averaged over 2024: (5.0+5.5+6.0)/3,
+    # (3.0+3.0+3.5)/3.
+    assert series_by_name["Liquids"][0] == pytest.approx(5.5, abs=0.001)
+    assert series_by_name["Natural gas"][0] == pytest.approx(3.167, abs=0.001)
+
+
+def test_multiple_companies_selected_never_shows_the_category_toggle(load_app):
+    page = load_app("psplit=company")
+    page.wait_for_selector("#production-stats details")
+    assert page.locator("#production-category-toggle").is_hidden()
+    option = page.evaluate("() => window.__echartsCharts['production-chart']")
+    names = {s["name"] for s in option["series"]}
+    assert names == {"Alpha Group", "Unresolved legal entities"}
+
+
+def test_single_legal_entity_selection_has_no_by_field_option(load_app):
+    """company_groups_field_breakdown.json is only published at GROUP
+    grain - at legal-entity grain, By field must never be silently
+    offered against data that doesn't exist; the toggle falls back to
+    Oil vs Gas only, with the By field option disabled."""
+    page = load_app("")
+    page.wait_for_selector("#production-stats details")
+    page.click('button[data-split="company"]')
+    page.wait_for_timeout(200)
+    page.check('input[name="pgrain"][value="entity"]')
+    page.wait_for_timeout(200)
+    page.select_option("#pf-company", "Gamma Co")
+    page.wait_for_timeout(300)
+
+    category_box = page.locator("#production-category-toggle")
+    assert not category_box.is_hidden()
+    assert category_box.locator('input[name="pcat"][value="commodity"]').is_checked()
+    assert category_box.locator('input[name="pcat"][value="field"]').is_disabled()
+
+    option = page.evaluate("() => window.__echartsCharts['production-chart']")
+    names = {s["name"] for s in option["series"]}
+    assert names == {"Liquids", "Natural gas"}
+
+
+def test_field_split_top_n_plus_other_reconciles_to_ukcs_total(load_app):
+    page = load_app("pfreq=monthly")  # pin monthly - annual is now the default
     page.wait_for_selector("#production-stats details")
     page.click('button[data-split="field"]')
     page.wait_for_timeout(200)

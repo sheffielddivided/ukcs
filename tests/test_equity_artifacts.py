@@ -25,6 +25,7 @@ from etl.equity_artifacts import (  # noqa: E402
     EquityBuildError,
     build_anomalies,
     build_company_artifacts,
+    build_company_field_artifacts,
     build_field_artifacts,
     build_index,
     build_publication_status_by_period_stream,
@@ -269,6 +270,84 @@ def test_company_totals_equal_field_based_equity_totals():
     company_total_oil = sum(e["oil_mbd"]["value"] or 0.0 for doc in company_docs.values() for e in doc["series"])
     field_total_oil = sum(r["oil_mbd"] for r in resolved_rows)
     assert round(company_total_oil, 6) == round(field_total_oil, 6)
+
+
+# ---------------------------------------------------------------------------
+# Company-field breakdown (2026-09-10 continuation)
+# ---------------------------------------------------------------------------
+
+
+def test_company_field_breakdown_reconciles_with_company_totals():
+    """Summing every one of a company's fields' total_mboed at a period
+    must reproduce that SAME company's own build_company_artifacts
+    total_mboed EXACTLY - the whole point of deriving both straight from
+    resolved_rows rather than one from the other."""
+    resolved_rows = [
+        _resolved_row("ALPHA", "ACME", "201303", 60, oil=10.0),
+        _resolved_row("BETA", "ACME", "201303", 100, oil=5.0),
+    ]
+    per_field_month = {
+        ("ALPHA", "201303"): _entry("resolved", oil=10.0),
+        ("BETA", "201303"): _entry("resolved", oil=5.0),
+    }
+    monthly_data = build_monthly_stream_data(per_field_month)
+    status_by_period_stream = build_publication_status_by_period_stream(monthly_data)
+    derived_status_by_period = build_derived_status_by_period(monthly_data)
+
+    company_docs = build_company_artifacts(resolved_rows, status_by_period_stream, derived_status_by_period)
+    field_docs = build_company_field_artifacts(resolved_rows, derived_status_by_period)
+
+    company_total = company_docs["ACME"]["series"][0]["total_mboed"]["value"]
+    field_sum = sum(doc["series"][0]["total_mboed"]["value"] for doc in field_docs["ACME"].values())
+    assert round(company_total, 6) == round(field_sum, 6)
+
+
+def test_company_field_breakdown_zero_fills_a_field_the_company_did_not_hold():
+    """ACME holds ALPHA every period but only holds BETA in 201304 - its
+    ALPHA-field series must still cover 201303 AND 201304 (both periods
+    ACME was active at all), with a real 0.0 for BETA at 201303 (known:
+    ACME held no interest there then), never null (which is reserved for
+    genuinely dataset-wide-unavailable periods/streams)."""
+    resolved_rows = [
+        _resolved_row("ALPHA", "ACME", "201303", 100, oil=10.0),
+        _resolved_row("ALPHA", "ACME", "201304", 100, oil=10.0),
+        _resolved_row("BETA", "ACME", "201304", 100, oil=5.0),
+    ]
+    per_field_month = {
+        ("ALPHA", "201303"): _entry("resolved", oil=10.0),
+        ("ALPHA", "201304"): _entry("resolved", oil=10.0),
+        ("BETA", "201304"): _entry("resolved", oil=5.0),
+    }
+    monthly_data = build_monthly_stream_data(per_field_month)
+    derived_status_by_period = build_derived_status_by_period(monthly_data)
+
+    field_docs = build_company_field_artifacts(resolved_rows, derived_status_by_period)
+    beta_series = {e["period"]: e for e in field_docs["ACME"]["BETA"]["series"]}
+    assert set(beta_series) == {"201303", "201304"}  # both of ACME's own active periods
+    assert beta_series["201303"]["total_mboed"]["value"] == 0.0  # known zero, not null
+    assert beta_series["201303"]["total_mboed"]["status"] != "unavailable"
+    assert beta_series["201304"]["total_mboed"]["value"] > 0.0
+
+
+def test_company_field_breakdown_key_fn_regroups_entities():
+    """A caller-supplied key_fn (e.g. entity -> current display group)
+    must attribute rows to the mapped key, not the raw legal entity
+    name - the mechanism build_company_groups_field_breakdown_overview
+    relies on to compute group-grain breakdown straight from
+    resolved_rows."""
+    resolved_rows = [
+        _resolved_row("ALPHA", "ACME UK LIMITED", "201303", 50, oil=10.0),
+        _resolved_row("ALPHA", "ACME HOLDINGS LIMITED", "201303", 50, oil=10.0),
+    ]
+    per_field_month = {("ALPHA", "201303"): _entry("resolved", oil=10.0)}
+    monthly_data = build_monthly_stream_data(per_field_month)
+    derived_status_by_period = build_derived_status_by_period(monthly_data)
+
+    grouped = build_company_field_artifacts(
+        resolved_rows, derived_status_by_period, key_fn=lambda r: "ACME GROUP"
+    )
+    assert set(grouped) == {"ACME GROUP"}
+    assert grouped["ACME GROUP"]["ALPHA"]["series"][0]["total_mboed"]["value"] == pytest.approx(10.0, abs=0.01)
 
 
 # ---------------------------------------------------------------------------

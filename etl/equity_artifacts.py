@@ -385,6 +385,80 @@ def build_company_artifacts(
     return docs
 
 
+def build_company_field_artifacts(
+    resolved_rows: list[dict],
+    derived_status_by_period: dict,
+    key_fn=None,
+) -> dict[str, dict[str, dict]]:
+    """{attribution_key: {field_name: doc}} - splits equity-attributable
+    production one level further than build_company_artifacts: by
+    field, not just by company. `key_fn(row) -> str` picks the
+    attribution key per resolved row - the default (None) uses the
+    row's own legal entity name (entity grain); passing a row ->
+    current-display-group mapping function instead produces the SAME
+    breakdown at group grain, computed directly from resolved_rows
+    rather than by re-aggregating an already-built entity-grain result.
+    Computing both grains straight from resolved_rows (rather than one
+    from the other) avoids an ambiguity a secondary aggregation would
+    introduce: "this entity/group held zero interest in this field" (a
+    real, known 0.0) is otherwise easy to conflate with "this period's
+    data is genuinely unavailable" (null) once a constituent's absence
+    has to be inferred from an already-aggregated doc instead of read
+    directly off the raw rows.
+
+    A field the attribution key held NO interest in during one of its
+    OWN active periods gets an explicit 0.0, never null; null is
+    reserved for a period/stream genuinely unavailable dataset-wide
+    (the same period-wide `derived_status_by_period` classification
+    build_company_artifacts already applies at the company grain). This
+    is what makes summing every field's total_mboed for one company/
+    group at a period reproduce that company/group's own company-level
+    total_mboed EXACTLY (validated in
+    overview.validate_company_field_breakdown_reconciliation)."""
+    key_fn = key_fn or (lambda r: r["company_name"])
+    by_key_field_period: dict[tuple[str, str, str], dict] = defaultdict(lambda: {s: 0.0 for s in PRODUCTION_STREAMS})
+    fields_by_key: dict[str, set] = defaultdict(set)
+    periods_by_key: dict[str, set] = defaultdict(set)
+    for r in resolved_rows:
+        attribution_key = key_fn(r)
+        cell = (attribution_key, r["field_name"], r["period"])
+        for stream in PRODUCTION_STREAMS:
+            by_key_field_period[cell][stream] += r[stream]
+        fields_by_key[attribution_key].add(r["field_name"])
+        periods_by_key[attribution_key].add(r["period"])
+
+    zero_totals = {s: 0.0 for s in PRODUCTION_STREAMS}
+    docs: dict[str, dict[str, dict]] = defaultdict(dict)
+    for attribution_key, fields in fields_by_key.items():
+        sorted_periods = sorted(periods_by_key[attribution_key])
+        for field in fields:
+            series = []
+            for period in sorted_periods:
+                totals = by_key_field_period.get((attribution_key, field, period), zero_totals)
+                derived_status = derived_status_by_period[period]
+
+                liquids_status = derived_status["liquids_mboed"]
+                liquids_value = derive_company_period_value(
+                    liquids_status, totals["oil_mbd"], totals["condensate_mbd"], is_gas=False
+                )
+                gas_status = derived_status["natural_gas_mboed"]
+                gas_value = derive_company_period_value(
+                    gas_status, totals["dry_gas_mmscfd"], totals["assoc_gas_mmscfd"], is_gas=True
+                )
+                total_value = None if (liquids_value is None or gas_value is None) else liquids_value + gas_value
+
+                series.append(
+                    {
+                        "period": period,
+                        "liquids_mboed": {"value": round_mboed(liquids_value), "status": liquids_status["status"]},
+                        "natural_gas_mboed": {"value": round_mboed(gas_value), "status": gas_status["status"]},
+                        "total_mboed": {"value": round_mboed(total_value), "status": derived_status["total_mboed"]["status"]},
+                    }
+                )
+            docs[attribution_key][field] = {"slug": slugify(field), "name": field, "series": series}
+    return dict(docs)
+
+
 def build_field_artifacts(
     field_match_index: dict[str, tuple[str, str]],
     raw_rows_by_equity_field: dict[str, list[dict]],

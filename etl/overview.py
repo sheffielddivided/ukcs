@@ -27,6 +27,7 @@ new aggregation logic beyond what is documented per function.
 from __future__ import annotations
 
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -35,6 +36,7 @@ from company_groups import (  # noqa: E402
     ALL_STREAMS,
     aggregate_company_series_by_group,
 )
+from equity_artifacts import build_company_field_artifacts  # noqa: E402
 from equity_match import PRODUCTION_STREAMS  # noqa: E402
 from equity_mboed import DERIVED_STREAMS  # noqa: E402
 from mboed import round_mboed  # noqa: E402
@@ -180,6 +182,85 @@ def validate_company_groups_overview_reconciliation(
             "unresolved bucket must equal legal-entity total): " + "; ".join(offenders)
         )
     return diffs
+
+
+# ---------------------------------------------------------------------------
+# Company-groups field breakdown (2026-09-10 continuation): lets the
+# Production overview's "By company" split show a SINGLE selected
+# company group's own production split by field, instead of collapsing
+# to one undifferentiated Total bar - the Production overview previously
+# had no company<->field attribution at all (company_groups_overview
+# above only carries company-level totals; build_fields_overview below
+# only carries UNATTRIBUTED field totals - neither says which company
+# a field's production belongs to).
+# ---------------------------------------------------------------------------
+
+
+def build_company_groups_field_breakdown_overview(
+    resolved_rows: list[dict],
+    derived_status_by_period: dict,
+    company_groups_mapping: list[dict],
+) -> dict[str, dict]:
+    """{group_name: {field_name: doc}} - the field-level counterpart of
+    build_company_groups_overview, computed the same way (collapsing
+    unapproved entities to the one shared UNRESOLVED_BUCKET_NAME) but
+    going straight from resolved_rows via build_company_field_artifacts'
+    key_fn, rather than re-aggregating an already-built per-entity
+    field-breakdown doc - see that function's docstring for why."""
+    entity_status = {row["source_legal_entity"]: row["status"] for row in company_groups_mapping}
+    entity_group = {row["source_legal_entity"]: row["current_display_group"] for row in company_groups_mapping}
+
+    def group_key(row: dict) -> str:
+        entity = row["company_name"]
+        if entity_status.get(entity) == "approved":
+            return entity_group.get(entity, entity)
+        return UNRESOLVED_BUCKET_NAME
+
+    return build_company_field_artifacts(resolved_rows, derived_status_by_period, key_fn=group_key)
+
+
+def validate_company_field_breakdown_reconciliation(
+    company_groups_overview: dict[str, dict],
+    company_groups_field_breakdown: dict[str, dict],
+    tolerance: float = 1e-6,
+) -> float:
+    """Build-breaking invariant: for every company group and period,
+    summing that group's per-field total_mboed values must reproduce
+    that SAME group's own company_groups_overview total_mboed value
+    EXACTLY (None-safe: a group-level None value must never coincide
+    with a non-None field-breakdown value for the same period - both
+    must equally mean 'unavailable')."""
+    max_diff = 0.0
+    offenders = []
+    for group, doc in company_groups_overview.items():
+        field_docs = company_groups_field_breakdown.get(group, {})
+        field_sum_by_period: dict[str, float] = defaultdict(float)
+        field_has_value_by_period: dict[str, bool] = defaultdict(bool)
+        for field_doc in field_docs.values():
+            for point in field_doc["series"]:
+                v = point["total_mboed"]["value"]
+                if v is not None:
+                    field_sum_by_period[point["period"]] += v
+                    field_has_value_by_period[point["period"]] = True
+
+        for point in doc["series"]:
+            period = point["period"]
+            group_value = point["total_mboed"]["value"]
+            if group_value is None:
+                if field_has_value_by_period.get(period):
+                    offenders.append(f"{group}/{period}: group total is None but field breakdown has a value")
+                continue
+            field_sum = field_sum_by_period.get(period, 0.0)
+            diff = abs(group_value - field_sum)
+            max_diff = max(max_diff, diff)
+            if diff > tolerance:
+                offenders.append(f"{group}/{period}: group total={group_value}, field_sum={field_sum}, diff={diff}")
+    if offenders:
+        raise OverviewError(
+            "Company-groups field breakdown does not reconcile with company-groups "
+            "overview: " + "; ".join(offenders[:20])
+        )
+    return max_diff
 
 
 # ---------------------------------------------------------------------------

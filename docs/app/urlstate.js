@@ -19,6 +19,7 @@ const VALID_VIEWS = new Set(["field", "equity", "operator"]);
 const VALID_METRICS = new Set(["equity", "operator"]);
 const VALID_PSPLIT = new Set(["commodity", "company", "field"]);
 const VALID_PGRAIN = new Set(["group", "entity"]);
+const VALID_PCAT = new Set(["commodity", "field"]);
 const VALID_PFREQ = new Set(["monthly", "annual"]);
 const VALID_PSTATUS = new Set(["current", "historical", "all"]);
 const VALID_PTOPN = new Set(["5", "10", "15", "20"]);
@@ -31,14 +32,14 @@ const VALID_LOPERATED = new Set(["all", "operated", "nonoperated"]);
 const KEY_ORDER = [
   "top",
   "view", "slug", "metric", "stream",
-  "psplit", "pfreq", "pgrain", "pgroup", "ptopn", "pfields", "pfrom", "pto", "pstatus",
+  "psplit", "pfreq", "pgrain", "pcat", "pgroup", "ptopn", "pfields", "pfrom", "pto", "pstatus",
   "mbubbles", "mpolygons",
   "lmode", "lgroup", "ldate", "loperated", "lstatus", "llicence",
 ];
 
 const PREFIX_BY_TOP = {
   map: ["view", "slug", "metric", "stream", "mbubbles", "mpolygons"],
-  production: ["psplit", "pfreq", "pgrain", "pgroup", "ptopn", "pfields", "pfrom", "pto", "pstatus"],
+  production: ["psplit", "pfreq", "pgrain", "pcat", "pgroup", "ptopn", "pfields", "pfrom", "pto", "pstatus"],
   licence: ["lmode", "lgroup", "ldate", "loperated", "lstatus", "llicence"],
 };
 
@@ -55,6 +56,8 @@ function validate(key, value) {
       return VALID_PSPLIT.has(value) ? value : undefined;
     case "pgrain":
       return VALID_PGRAIN.has(value) ? value : undefined;
+    case "pcat":
+      return VALID_PCAT.has(value) ? value : undefined;
     case "pfreq":
       return VALID_PFREQ.has(value) ? value : undefined;
     case "ptopn":

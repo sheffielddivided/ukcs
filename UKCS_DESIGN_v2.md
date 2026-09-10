@@ -2219,3 +2219,66 @@ Tested in `tests/frontend/test_equity_frontend.py`
 `test_field_ownership_rows_show_current_owners_first_then_historic_descending` - the latter needed
 a second historic interval added to the `alpha-field` equity fixture, since the existing fixture
 only had one historic row and so could not exercise descending-order-among-historic on its own).
+
+### 17.10 Production overview — annual default, single-company field/commodity split (2026-09-10) — IMPLEMENTED
+
+Requested: "in the production view: annual average should be selected by default. when 'By
+company' is selected, and a single company is selected, the chart now only shows the total
+production. It should be split into categories - either oil vs gas, or by field. By field should
+be the default selection."
+
+**Annual default.** `pfreq`'s absence now means annual (previously meant monthly), matching the
+"absence = default" convention every other production URL key already uses. Monthly is now the
+explicit, URL-recorded non-default choice. `docs/app/production.js`'s `renderFreqToggle()` and the
+three split renderers' own `annual = state.pfreq !== "monthly"` checks were inverted accordingly;
+the active-filter chip logic now surfaces "Monthly" (the deviation) instead of "Annual average"
+(the default).
+
+**Single-company category split.** Selecting exactly one company under "By company" used to
+render one undifferentiated "Total" bar (nothing left to stack company-vs-company against). It now
+offers a category toggle (`pcat` URL key: `commodity` default is NOT the default - `field` is,
+matching the request) - Oil vs Gas or By field:
+- Oil vs Gas needs no new data: it's that one company's own already-published
+  `liquids_mboed`/`natural_gas_mboed` values (`commodityCategorySeries()`).
+- By field needed genuinely new data: the Production overview had NO company&lt;-&gt;field
+  attribution anywhere (`company_groups.json` only carries company-level totals;
+  `fields.json`/`overview_fields` only carries UNattributed field totals). Built as a new ETL
+  artifact, `docs/data/overview/company_groups_field_breakdown.json` -
+  `{group_name: {field_name: {slug, name, series:[{period, liquids_mboed:{value,status},
+  natural_gas_mboed:{...}, total_mboed:{...}}]}}}` - fetched lazily
+  (`fieldCategorySeries()`, via the existing generic `getOverviewArtifact()`), only when a single
+  GROUP is selected and By field is (the default) selection.
+
+  - `etl/equity_artifacts.py`'s new `build_company_field_artifacts(resolved_rows,
+    derived_status_by_period, key_fn=None)` splits `build_company_artifacts`'s own equity-weighted
+    derivation one level further, by field - `key_fn` picks the attribution key per resolved row
+    (defaults to the raw legal entity name; a row -> current-display-group mapping function
+    produces group grain instead). Both grains are computed straight from `resolved_rows`, never
+    by re-aggregating an already-built grain from the other, specifically to avoid conflating "this
+    entity/group held zero interest in this field" (a real, known 0.0) with "this period's data is
+    genuinely unavailable dataset-wide" (null).
+  - `etl/overview.py`'s new `build_company_groups_field_breakdown_overview()` calls the above with
+    the SAME unresolved-entity-collapsing `key_fn` `build_company_groups_overview()` itself uses,
+    so both artifacts collapse unapproved entities into the one shared `UNRESOLVED_BUCKET_NAME`
+    bucket identically. `validate_company_field_breakdown_reconciliation()` is a build-breaking
+    check (wired into `etl/build.py`, same "fail the whole build, write nothing" discipline as
+    every other overview reconciliation check): summing every one of a group's fields'
+    `total_mboed` at a period must reproduce that SAME group's own `company_groups_overview`
+    `total_mboed` value EXACTLY.
+  - Only GROUP grain is published - legal-entity grain has no field-breakdown artifact yet
+    (deliberately deferred, not a silent gap: `docs/app/production.js`'s category toggle disables
+    the "By field" option and falls back to Oil vs Gas whenever `pgrain=entity`, rather than
+    fetching or fabricating data that doesn't exist).
+
+Tested in `tests/test_equity_artifacts.py` (`test_company_field_breakdown_reconciles_with_company_totals`,
+`test_company_field_breakdown_zero_fills_a_field_the_company_did_not_hold`,
+`test_company_field_breakdown_key_fn_regroups_entities`), `tests/test_overview.py`
+(`test_company_groups_field_breakdown_collapses_unresolved_same_as_totals`,
+`test_company_field_breakdown_reconciliation_catches_a_dropped_field`), and
+`tests/frontend/test_production_frontend.py` (`test_annual_average_is_the_default_frequency_on_a_plain_load`,
+`test_switching_to_monthly_shows_the_original_series_and_is_recorded_in_the_url`,
+`test_single_company_selection_defaults_to_by_field_breakdown`,
+`test_single_company_selection_can_switch_to_oil_vs_gas`,
+`test_multiple_companies_selected_never_shows_the_category_toggle`,
+`test_single_legal_entity_selection_has_no_by_field_option`) - the last of which needed a new
+fixture, `tests/frontend/fixtures/docs/data/overview/company_groups_field_breakdown.json`.

@@ -52,6 +52,7 @@ export async function initProductionView(container) {
       <div id="production-split-tabs" class="production-tabs" role="tablist" aria-label="Production split mode"></div>
       <div id="production-freq-toggle" class="production-subcontrols"></div>
       <div id="production-grain-toggle" class="production-subcontrols" hidden></div>
+      <div id="production-category-toggle" class="production-subcontrols" hidden></div>
       <div id="production-topn-controls" class="production-subcontrols" hidden></div>
     </div>
     <div id="production-filters" class="production-filters"></div>
@@ -159,6 +160,11 @@ export async function refreshFromUrl() {
   highlightActiveTab(split);
 
   document.getElementById("production-grain-toggle").hidden = split !== "company";
+  // production-category-toggle's own visibility (only when a SINGLE
+  // company is selected) is set inside renderCompanySplit, once it
+  // knows how many names are actually selected - defaulted hidden here
+  // for every other split so a stale toggle never lingers visible.
+  if (split !== "company") document.getElementById("production-category-toggle").hidden = true;
   document.getElementById("production-topn-controls").hidden = split !== "field";
   document.getElementById("production-caveat").hidden = !(split === "company" && (state.pgrain || "group") === "group");
   document.getElementById("production-group-detail").innerHTML = "";
@@ -236,9 +242,14 @@ function renderFilters(split, state) {
 // Monthly / annual-average frequency toggle (applies to every split mode)
 // ---------------------------------------------------------------------------
 
+// Annual average is the default (spec 2026-09-10 continuation) - absence
+// of `pfreq` means annual, matching the established "absence = default"
+// convention every other production URL key already uses (e.g. absence
+// of `psplit` means commodity). Monthly is the deliberate, explicit
+// non-default choice and is the one written to the URL.
 function renderFreqToggle(state) {
   const box = document.getElementById("production-freq-toggle");
-  const freq = state.pfreq === "annual" ? "annual" : "monthly";
+  const freq = state.pfreq === "monthly" ? "monthly" : "annual";
   box.innerHTML = `
     <label><input type="radio" name="pfreq" value="monthly" ${freq === "monthly" ? "checked" : ""} /> Monthly</label>
     <label><input type="radio" name="pfreq" value="annual" ${freq === "annual" ? "checked" : ""} /> Annual average</label>
@@ -246,7 +257,7 @@ function renderFreqToggle(state) {
   for (const radio of box.querySelectorAll('input[name="pfreq"]')) {
     radio.addEventListener("change", (e) => {
       if (e.target.checked) {
-        updateUrlState({ pfreq: e.target.value === "monthly" ? null : e.target.value });
+        updateUrlState({ pfreq: e.target.value === "annual" ? null : e.target.value });
         refreshFromUrl();
       }
     });
@@ -312,6 +323,56 @@ function wireGrainToggle() {
   }
 }
 
+// Shown only when exactly one company (group or legal entity) is
+// selected in the "By company" split - a single selection has nothing
+// left to stack company-vs-company, so the chart instead breaks that
+// one company's OWN production into categories (spec 2026-09-10
+// continuation: "It should be split into categories - either oil vs
+// gas, or by field. By field should be the default selection."). By
+// field needs the equity-weighted per-field breakdown
+// (company_groups_field_breakdown.json), only published at GROUP grain
+// - at legal-entity grain there is no such breakdown yet, so the
+// control only ever offers Oil vs Gas there (never silently produced
+// from data that doesn't exist).
+function renderCategoryToggle(state, fieldBreakdownAvailable) {
+  const box = document.getElementById("production-category-toggle");
+  box.hidden = false;
+  const cat = fieldBreakdownAvailable && state.pcat === "commodity" ? "commodity" : fieldBreakdownAvailable ? "field" : "commodity";
+  box.innerHTML = `
+    <label><input type="radio" name="pcat" value="commodity" ${cat === "commodity" ? "checked" : ""} /> Oil vs Gas</label>
+    <label><input type="radio" name="pcat" value="field" ${cat === "field" ? "checked" : ""} ${fieldBreakdownAvailable ? "" : "disabled"} /> By field</label>
+  `;
+  for (const radio of box.querySelectorAll('input[name="pcat"]')) {
+    radio.addEventListener("change", (e) => {
+      if (e.target.checked) {
+        updateUrlState({ pcat: e.target.value === "field" ? null : e.target.value });
+        refreshFromUrl();
+      }
+    });
+  }
+}
+
+function commodityCategorySeries(companyDoc, periods) {
+  const byPeriod = new Map(companyDoc.series.map((p) => [p.period, p]));
+  return [
+    { name: "Liquids", color: COLORS[0], data: periods.map((p) => byPeriod.get(p)?.liquids_mboed?.value ?? null) },
+    { name: "Natural gas", color: COLORS[1], data: periods.map((p) => byPeriod.get(p)?.natural_gas_mboed?.value ?? null) },
+  ];
+}
+
+async function fieldCategorySeries(groupName, periods) {
+  const breakdown = await getOverviewArtifact("company_groups_field_breakdown");
+  const groupFields = breakdown[groupName] || {};
+  return Object.values(groupFields).map((fieldDoc, i) => {
+    const byPeriod = new Map(fieldDoc.series.map((p) => [p.period, p]));
+    return {
+      name: fieldDoc.name,
+      color: COLORS[i % COLORS.length],
+      data: periods.map((p) => byPeriod.get(p)?.total_mboed?.value ?? null),
+    };
+  });
+}
+
 function topNHtml(state) {
   const n = state.ptopn || "10";
   return `
@@ -336,7 +397,8 @@ function wireTopN() {
 function renderActiveFilterChips(state) {
   const box = document.getElementById("production-active-filters");
   const chips = [];
-  if (state.pfreq === "annual") chips.push("Annual average");
+  if (state.pfreq === "monthly") chips.push("Monthly");
+  if (state.pcat === "commodity") chips.push("Oil vs Gas");
   if (state.pfrom) chips.push(`From ${state.pfrom}`);
   if (state.pto) chips.push(`To ${state.pto}`);
   if (state.pstatus) chips.push(`Status: ${state.pstatus}`);
@@ -363,7 +425,7 @@ async function renderCommoditySplit(state) {
   if (points.length === 0) return;
 
   const monthlyPeriods = points.map((p) => p.period);
-  const annual = state.pfreq === "annual";
+  const annual = state.pfreq !== "monthly";
   const periods = annual ? distinctYears(monthlyPeriods) : monthlyPeriods.map(formatPeriodShort);
   const liquidsData = annual
     ? aggregateSeriesAnnual(monthlyPeriods, points.map((p) => p.liquids_mboed))
@@ -424,6 +486,7 @@ async function renderCompanySplit(state) {
   if (names.length === 0) {
     toggleEmpty(true);
     document.getElementById("production-summary").textContent = "No data for selected filters.";
+    document.getElementById("production-category-toggle").hidden = true;
     return;
   }
 
@@ -439,19 +502,40 @@ async function renderCompanySplit(state) {
   toggleEmpty(periods.length === 0);
   if (periods.length === 0) return;
 
-  const monthlyStacked = names.map((name, i) => {
-    const byPeriod = new Map(data[name].series.map((p) => [p.period, p]));
-    return {
-      name,
-      color: COLORS[i % COLORS.length],
-      data: periods.map((period) => {
-        const point = byPeriod.get(period);
-        return point ? point.total_mboed.value : null;
-      }),
-    };
-  });
+  const singleSelection = names.length === 1;
+  let monthlyStacked;
+  let categoryLabel = "";
 
-  const annual = state.pfreq === "annual";
+  if (singleSelection) {
+    // One company left nothing to stack company-vs-company against, so
+    // the chart instead breaks that ONE company's own production into
+    // categories - by field (default, group grain only) or Oil vs Gas.
+    const fieldBreakdownAvailable = grain === "group";
+    renderCategoryToggle(state, fieldBreakdownAvailable);
+    const cat = fieldBreakdownAvailable && state.pcat === "commodity" ? "commodity" : fieldBreakdownAvailable ? "field" : "commodity";
+    if (cat === "field") {
+      monthlyStacked = await fieldCategorySeries(names[0], periods);
+      categoryLabel = ", by field";
+    } else {
+      monthlyStacked = commodityCategorySeries(data[names[0]], periods);
+      categoryLabel = ", oil vs gas";
+    }
+  } else {
+    document.getElementById("production-category-toggle").hidden = true;
+    monthlyStacked = names.map((name, i) => {
+      const byPeriod = new Map(data[name].series.map((p) => [p.period, p]));
+      return {
+        name,
+        color: COLORS[i % COLORS.length],
+        data: periods.map((period) => {
+          const point = byPeriod.get(period);
+          return point ? point.total_mboed.value : null;
+        }),
+      };
+    });
+  }
+
+  const annual = state.pfreq !== "monthly";
   const displayPeriods = annual ? distinctYears(periods) : periods.map(formatPeriodShort);
   const stacked = annual
     ? monthlyStacked.map((s) => ({ ...s, data: aggregateSeriesAnnual(periods, s.data) }))
@@ -465,8 +549,9 @@ async function renderCompanySplit(state) {
   );
 
   const unitLabel = annual ? `${displayPeriods.length} year(s) (annual average)` : `${periods.length} months`;
-  document.getElementById("production-summary").textContent =
-    `${names.length} ${grain === "group" ? "company group(s)" : "legal entit(ies)"} shown over ${unitLabel}.`;
+  document.getElementById("production-summary").textContent = singleSelection
+    ? `${names[0]} shown over ${unitLabel}${categoryLabel}.`
+    : `${names.length} ${grain === "group" ? "company group(s)" : "legal entit(ies)"} shown over ${unitLabel}.`;
 
   if (state.pgroup && grain === "group") {
     renderGroupDetail(state.pgroup, data[state.pgroup]);
@@ -573,7 +658,7 @@ async function renderFieldSplit(state) {
   }));
   const monthlyTotalData = periods.map((p) => monthlyByPeriod.get(p) ?? null);
 
-  const annual = state.pfreq === "annual";
+  const annual = state.pfreq !== "monthly";
   const displayPeriods = annual ? distinctYears(periods) : periods.map(formatPeriodShort);
   const fieldSeries = annual
     ? monthlyFieldSeries.map((s) => ({ ...s, data: aggregateSeriesAnnual(periods, s.data) }))

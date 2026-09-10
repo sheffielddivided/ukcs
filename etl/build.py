@@ -115,11 +115,13 @@ from licence_history import (  # noqa: E402
 )
 from overview import (  # noqa: E402
     OverviewError,
+    build_company_groups_field_breakdown_overview,
     build_company_groups_overview,
     build_fields_overview,
     build_legal_entities_overview,
     build_monthly_totals,
     build_overview_meta,
+    validate_company_field_breakdown_reconciliation,
     validate_company_groups_overview_reconciliation,
     validate_fields_overview_reconciliation,
     validate_monthly_totals_reconciliation,
@@ -644,6 +646,21 @@ def main() -> int:
         )
         validate_company_groups_overview_reconciliation(equity_company_docs, overview_company_groups)
 
+        # A single selected company group's OWN production split by
+        # field (2026-09-10 continuation) - lets the Production overview
+        # show which fields make up one company's total instead of
+        # collapsing to one undifferentiated bar. Computed straight from
+        # equity_result["resolved_rows"] (the same equity-weighted,
+        # already-validated rows overview_company_groups itself derives
+        # from), never from overview_company_groups after the fact, so
+        # there is no company<->field attribution guess involved.
+        overview_company_groups_field_breakdown = build_company_groups_field_breakdown_overview(
+            equity_result["resolved_rows"], equity_derived_status_by_period, company_groups_mapping
+        )
+        validate_company_field_breakdown_reconciliation(
+            overview_company_groups, overview_company_groups_field_breakdown
+        )
+
         overview_legal_entities = build_legal_entities_overview(equity_company_docs)
 
         overview_fields = build_fields_overview(histories)
@@ -802,6 +819,7 @@ def main() -> int:
             "meta": overview_meta,
             "monthly_totals": overview_monthly_totals,
             "company_groups": overview_company_groups,
+            "company_groups_field_breakdown": overview_company_groups_field_breakdown,
             "legal_entities": overview_legal_entities,
             "fields": overview_fields,
         },

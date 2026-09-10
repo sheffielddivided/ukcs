@@ -261,15 +261,27 @@
       since a legal entity with no approved mapping is not itself a company group.
     </p>
     <p>
-      Every split in this view also has a <strong>Monthly / Annual average</strong> toggle. Annual
-      average is computed entirely in the browser from the same already-published monthly values
-      shown in Monthly mode &mdash; no new figure is fetched or derived server-side. A year's value
-      is the mean of only the months actually available that year (a missing/unavailable month is
-      never treated as zero), so a partial year (the current year to date, for example) is still a
-      genuine average of what is known, not diluted by absent months. In the By field split, "Other
-      fields" is defined the same way at either grain &mdash; UKCS Total minus the sum of the
-      displayed fields, computed at whichever grain is on screen &mdash; so the reconciling identity
-      holds exactly whether viewing monthly or annual figures.
+      Every split in this view also has a <strong>Monthly / Annual average</strong> toggle,
+      <strong>defaulting to Annual average</strong>. Annual average is computed entirely in the
+      browser from the same already-published monthly values shown in Monthly mode &mdash; no new
+      figure is fetched or derived server-side. A year's value is the mean of only the months
+      actually available that year (a missing/unavailable month is never treated as zero), so a
+      partial year (the current year to date, for example) is still a genuine average of what is
+      known, not diluted by absent months. In the By field split, "Other fields" is defined the
+      same way at either grain &mdash; UKCS Total minus the sum of the displayed fields, computed
+      at whichever grain is on screen &mdash; so the reconciling identity holds exactly whether
+      viewing monthly or annual figures.
+    </p>
+    <p>
+      Selecting exactly <strong>one</strong> company under By company splits that company's own
+      production into categories instead of showing one undifferentiated total: <strong>By
+      field</strong> (the default, current-group grain only) or <strong>Oil vs Gas</strong>. Oil vs
+      Gas reuses that company's own already-published <code>liquids_mboed</code>/
+      <code>natural_gas_mboed</code> values. By field uses a dedicated equity-weighted per-field
+      breakdown, built and reconciled the same way the company totals themselves are (summing every
+      field's contribution reproduces that company's own published total exactly) &mdash; not
+      published for legal-entity grain, so the category control offers Oil vs Gas only when viewing
+      an individual legal entity rather than a current company group.
     </p>
 
     <h3>What this figure is not</h3>

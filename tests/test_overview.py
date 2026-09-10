@@ -15,15 +15,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from etl.overview import (  # noqa: E402
     OverviewError,
     UNRESOLVED_BUCKET_NAME,
+    build_company_groups_field_breakdown_overview,
     build_company_groups_overview,
     build_fields_overview,
     build_monthly_totals,
     build_overview_meta,
     build_legal_entities_overview,
+    validate_company_field_breakdown_reconciliation,
     validate_company_groups_overview_reconciliation,
     validate_fields_overview_reconciliation,
     validate_monthly_totals_reconciliation,
 )
+from etl.equity_mboed import build_derived_status_by_period  # noqa: E402
+from etl.equity_publication_window import build_monthly_stream_data  # noqa: E402
 
 
 @dataclass
@@ -171,6 +175,84 @@ def test_company_groups_overview_reconciliation_catches_dropped_entity():
         assert False, "must raise when overview drops production"
     except OverviewError as e:
         assert "oil_mbd" in str(e)
+
+
+# ---------------------------------------------------------------------------
+# Company-groups field breakdown (2026-09-10 continuation)
+# ---------------------------------------------------------------------------
+
+
+def _resolved_row(field, company, period, pct, oil=10.0):
+    factor = pct / 100.0
+    return {
+        "field_name": field,
+        "company_name": company,
+        "interest_pct": pct,
+        "period": period,
+        "oil_mbd": oil * factor,
+        "dry_gas_mmscfd": 0.0,
+        "assoc_gas_mmscfd": 0.0,
+        "condensate_mbd": 0.0,
+    }
+
+
+def _equity_entry(oil):
+    return {
+        "category": "resolved",
+        "production": {"period": "201303", "oil_mbd": oil, "dry_gas_mmscfd": 0.0, "assoc_gas_mmscfd": 0.0, "condensate_mbd": 0.0},
+    }
+
+
+def test_company_groups_field_breakdown_collapses_unresolved_same_as_totals():
+    from etl.equity_artifacts import build_company_artifacts, build_publication_status_by_period_stream
+
+    resolved_rows = [
+        _resolved_row("ALPHA", "APPROVED CO", "201303", 100, oil=10.0),
+        _resolved_row("BETA", "UNRESOLVED CO A", "201303", 100, oil=1.0),
+        _resolved_row("GAMMA", "UNRESOLVED CO B", "201303", 100, oil=2.0),
+    ]
+    per_field_month = {
+        ("ALPHA", "201303"): _equity_entry(10.0),
+        ("BETA", "201303"): _equity_entry(1.0),
+        ("GAMMA", "201303"): _equity_entry(2.0),
+    }
+    monthly_data = build_monthly_stream_data(per_field_month)
+    status_by_period_stream = build_publication_status_by_period_stream(monthly_data)
+    derived_status_by_period = build_derived_status_by_period(monthly_data)
+
+    mapping = [
+        {"source_legal_entity": "APPROVED CO", "current_display_group": "BIG GROUP", "status": "approved"},
+        {"source_legal_entity": "UNRESOLVED CO A", "current_display_group": "UNRESOLVED CO A", "status": "unresolved"},
+        {"source_legal_entity": "UNRESOLVED CO B", "current_display_group": "UNRESOLVED CO B", "status": "unresolved"},
+    ]
+
+    equity_company_docs = build_company_artifacts(resolved_rows, status_by_period_stream, derived_status_by_period)
+    company_groups_overview = build_company_groups_overview(equity_company_docs, mapping)
+    breakdown = build_company_groups_field_breakdown_overview(resolved_rows, derived_status_by_period, mapping)
+
+    assert "BIG GROUP" in breakdown
+    assert set(breakdown["BIG GROUP"]) == {"ALPHA"}
+    assert UNRESOLVED_BUCKET_NAME in breakdown
+    # Both unresolved companies' fields collapse under the one shared bucket.
+    assert set(breakdown[UNRESOLVED_BUCKET_NAME]) == {"BETA", "GAMMA"}
+
+    # Must not raise - group-level total reconciles exactly with the
+    # field breakdown summed across that group's fields.
+    diff = validate_company_field_breakdown_reconciliation(company_groups_overview, breakdown)
+    assert diff < 1e-9
+
+
+def test_company_field_breakdown_reconciliation_catches_a_dropped_field():
+    company_groups_overview = {
+        "GROUP": {"series": [{"period": "201303", "total_mboed": {"value": 10.0, "status": "complete"}}]},
+    }
+    # Tampered: the field breakdown for this group is missing entirely.
+    breakdown = {"GROUP": {}}
+    try:
+        validate_company_field_breakdown_reconciliation(company_groups_overview, breakdown)
+        assert False, "must raise when the field breakdown drops production the group total carries"
+    except OverviewError as e:
+        assert "GROUP" in str(e)
 
 
 # ---------------------------------------------------------------------------
