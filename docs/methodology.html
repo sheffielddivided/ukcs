@@ -256,6 +256,17 @@
       own one-entity fallback &mdash; the two are never combined into one "distinct groups" figure,
       since a legal entity with no approved mapping is not itself a company group.
     </p>
+    <p>
+      Every split in this view also has a <strong>Monthly / Annual average</strong> toggle. Annual
+      average is computed entirely in the browser from the same already-published monthly values
+      shown in Monthly mode &mdash; no new figure is fetched or derived server-side. A year's value
+      is the mean of only the months actually available that year (a missing/unavailable month is
+      never treated as zero), so a partial year (the current year to date, for example) is still a
+      genuine average of what is known, not diluted by absent months. In the By field split, "Other
+      fields" is defined the same way at either grain &mdash; UKCS Total minus the sum of the
+      displayed fields, computed at whichever grain is on screen &mdash; so the reconciling identity
+      holds exactly whether viewing monthly or annual figures.
+    </p>
 
     <h3>What this figure is not</h3>
     <p>

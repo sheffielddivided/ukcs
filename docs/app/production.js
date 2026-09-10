@@ -50,6 +50,7 @@ export async function initProductionView(container) {
     <div id="production-stats" class="production-stats"></div>
     <div class="production-controls">
       <div id="production-split-tabs" class="production-tabs" role="tablist" aria-label="Production split mode"></div>
+      <div id="production-freq-toggle" class="production-subcontrols"></div>
       <div id="production-grain-toggle" class="production-subcontrols" hidden></div>
       <div id="production-topn-controls" class="production-subcontrols" hidden></div>
     </div>
@@ -162,6 +163,7 @@ export async function refreshFromUrl() {
   document.getElementById("production-caveat").hidden = !(split === "company" && (state.pgrain || "group") === "group");
   document.getElementById("production-group-detail").innerHTML = "";
 
+  renderFreqToggle(state);
   renderFilters(split, state);
   renderActiveFilterChips(state);
 
@@ -230,6 +232,67 @@ function renderFilters(split, state) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Monthly / annual-average frequency toggle (applies to every split mode)
+// ---------------------------------------------------------------------------
+
+function renderFreqToggle(state) {
+  const box = document.getElementById("production-freq-toggle");
+  const freq = state.pfreq === "annual" ? "annual" : "monthly";
+  box.innerHTML = `
+    <label><input type="radio" name="pfreq" value="monthly" ${freq === "monthly" ? "checked" : ""} /> Monthly</label>
+    <label><input type="radio" name="pfreq" value="annual" ${freq === "annual" ? "checked" : ""} /> Annual average</label>
+  `;
+  for (const radio of box.querySelectorAll('input[name="pfreq"]')) {
+    radio.addEventListener("change", (e) => {
+      if (e.target.checked) {
+        updateUrlState({ pfreq: e.target.value === "monthly" ? null : e.target.value });
+        refreshFromUrl();
+      }
+    });
+  }
+}
+
+// Distinct calendar years present in a "YYYYMM"-period array, in the
+// order they first appear (periods are always pre-sorted ascending by
+// every caller, so this is also ascending).
+function distinctYears(periods) {
+  const years = [];
+  const seen = new Set();
+  for (const p of periods) {
+    const y = p.slice(0, 4);
+    if (!seen.has(y)) {
+      seen.add(y);
+      years.push(y);
+    }
+  }
+  return years;
+}
+
+// Averages a monthly `data` series (1:1 index-aligned with `periods`)
+// into one value per calendar year - honest averaging: a year's value
+// is the mean of only the months that actually have data that year
+// (never treats a missing/unavailable month as zero), so a partial
+// year (e.g. the current year to date) is still a genuine average of
+// what is actually known, not silently diluted. A year with zero
+// known months is null, never a fabricated 0.
+function aggregateSeriesAnnual(periods, data) {
+  const byYear = new Map();
+  for (let i = 0; i < periods.length; i++) {
+    const v = data[i];
+    if (v == null) continue;
+    const y = periods[i].slice(0, 4);
+    const entry = byYear.get(y) || { sum: 0, count: 0 };
+    entry.sum += v;
+    entry.count += 1;
+    byYear.set(y, entry);
+  }
+  return distinctYears(periods).map((y) => {
+    const entry = byYear.get(y);
+    return entry ? +(entry.sum / entry.count).toFixed(3) : null;
+  });
+}
+
 function grainToggleHtml(state) {
   const grain = state.pgrain || "group";
   return `
@@ -273,6 +336,7 @@ function wireTopN() {
 function renderActiveFilterChips(state) {
   const box = document.getElementById("production-active-filters");
   const chips = [];
+  if (state.pfreq === "annual") chips.push("Annual average");
   if (state.pfrom) chips.push(`From ${state.pfrom}`);
   if (state.pto) chips.push(`To ${state.pto}`);
   if (state.pstatus) chips.push(`Status: ${state.pstatus}`);
@@ -298,22 +362,35 @@ async function renderCommoditySplit(state) {
   toggleEmpty(points.length === 0);
   if (points.length === 0) return;
 
-  const periods = points.map((p) => formatPeriodShort(p.period));
+  const monthlyPeriods = points.map((p) => p.period);
+  const annual = state.pfreq === "annual";
+  const periods = annual ? distinctYears(monthlyPeriods) : monthlyPeriods.map(formatPeriodShort);
+  const liquidsData = annual
+    ? aggregateSeriesAnnual(monthlyPeriods, points.map((p) => p.liquids_mboed))
+    : points.map((p) => p.liquids_mboed);
+  const gasData = annual
+    ? aggregateSeriesAnnual(monthlyPeriods, points.map((p) => p.natural_gas_mboed))
+    : points.map((p) => p.natural_gas_mboed);
+  const totalData = annual
+    ? aggregateSeriesAnnual(monthlyPeriods, points.map((p) => p.total_mboed))
+    : points.map((p) => p.total_mboed);
+
   await renderProductionChart(
     document.getElementById("production-chart"),
     periods,
     [
-      { name: "Liquids", color: COLORS[0], data: points.map((p) => p.liquids_mboed) },
-      { name: "Natural gas", color: COLORS[1], data: points.map((p) => p.natural_gas_mboed) },
+      { name: "Liquids", color: COLORS[0], data: liquidsData },
+      { name: "Natural gas", color: COLORS[1], data: gasData },
     ],
-    { name: "Total", color: "#1a1a1a", data: points.map((p) => p.total_mboed) }
+    { name: "Total", color: "#1a1a1a", data: totalData }
   );
 
   const latest = points[points.length - 1];
+  const unitLabel = annual ? `${periods.length} year(s) shown (annual average)` : `${points.length} months shown`;
   document.getElementById("production-summary").textContent =
     `Latest period ${latest.period}: Liquids ${latest.liquids_mboed} mboe/d, ` +
     `Natural gas ${latest.natural_gas_mboed} mboe/d, Total ${latest.total_mboed} mboe/d. ` +
-    `${points.length} months shown.`;
+    `${unitLabel}.`;
   wireChartTooltipA11y(points, "liquids_mboed", "natural_gas_mboed", "total_mboed");
 }
 
@@ -362,7 +439,7 @@ async function renderCompanySplit(state) {
   toggleEmpty(periods.length === 0);
   if (periods.length === 0) return;
 
-  const stacked = names.map((name, i) => {
+  const monthlyStacked = names.map((name, i) => {
     const byPeriod = new Map(data[name].series.map((p) => [p.period, p]));
     return {
       name,
@@ -374,15 +451,22 @@ async function renderCompanySplit(state) {
     };
   });
 
+  const annual = state.pfreq === "annual";
+  const displayPeriods = annual ? distinctYears(periods) : periods.map(formatPeriodShort);
+  const stacked = annual
+    ? monthlyStacked.map((s) => ({ ...s, data: aggregateSeriesAnnual(periods, s.data) }))
+    : monthlyStacked;
+
   await renderProductionChart(
     document.getElementById("production-chart"),
-    periods.map(formatPeriodShort),
+    displayPeriods,
     stacked,
     null
   );
 
+  const unitLabel = annual ? `${displayPeriods.length} year(s) (annual average)` : `${periods.length} months`;
   document.getElementById("production-summary").textContent =
-    `${names.length} ${grain === "group" ? "company group(s)" : "legal entit(ies)"} shown over ${periods.length} months.`;
+    `${names.length} ${grain === "group" ? "company group(s)" : "legal entit(ies)"} shown over ${unitLabel}.`;
 
   if (state.pgroup && grain === "group") {
     renderGroupDetail(state.pgroup, data[state.pgroup]);
@@ -479,7 +563,7 @@ async function renderFieldSplit(state) {
   const monthlyByPeriod = new Map(monthlyTotals.map((p) => [p.period, p.total_mboed]));
   const fieldSeriesByPeriod = selectedSlugs.map((slug) => new Map(fields[slug].series.map((p) => [p.period, p.total_mboed])));
 
-  const stacked = selectedSlugs.map((slug, i) => ({
+  const monthlyFieldSeries = selectedSlugs.map((slug, i) => ({
     name: fields[slug].name,
     color: COLORS[i % COLORS.length],
     data: periods.map((period) => {
@@ -487,29 +571,42 @@ async function renderFieldSplit(state) {
       return v == null ? null : v;
     }),
   }));
+  const monthlyTotalData = periods.map((p) => monthlyByPeriod.get(p) ?? null);
 
-  // Other fields = UKCS Total - sum(displayed fields), computed here
-  // from the already-published (rounded) values - see
-  // etl/overview.py's validate_fields_overview_reconciliation for the
-  // server-side guarantee that sum(ALL fields) == monthly_totals, which
-  // is what makes this client-side subtraction meaningful rather than
-  // an independent, possibly-inconsistent number.
-  const otherData = periods.map((period, idx) => {
-    const total = monthlyByPeriod.get(period);
+  const annual = state.pfreq === "annual";
+  const displayPeriods = annual ? distinctYears(periods) : periods.map(formatPeriodShort);
+  const fieldSeries = annual
+    ? monthlyFieldSeries.map((s) => ({ ...s, data: aggregateSeriesAnnual(periods, s.data) }))
+    : monthlyFieldSeries;
+  const totalData = annual ? aggregateSeriesAnnual(periods, monthlyTotalData) : monthlyTotalData;
+
+  // Other fields = UKCS Total - sum(displayed fields) - DEFINED this
+  // way at whichever grain (monthly or annual) is being displayed, not
+  // derived by separately averaging an already-computed monthly Other
+  // series. That keeps the reconciling identity exact by construction
+  // at either grain, even though individual fields and the UKCS total
+  // may have differing null/coverage patterns across months within a
+  // year. See etl/overview.py's validate_fields_overview_reconciliation
+  // for the server-side guarantee that sum(ALL fields) == monthly_totals,
+  // which is what makes this client-side subtraction meaningful rather
+  // than an independent, possibly-inconsistent number.
+  const otherData = displayPeriods.map((_, idx) => {
+    const total = totalData[idx];
     if (total == null) return null;
     let sumDisplayed = 0;
-    for (const seriesMap of fieldSeriesByPeriod) sumDisplayed += seriesMap.get(period) || 0;
+    for (const s of fieldSeries) sumDisplayed += s.data[idx] || 0;
     return Math.max(0, +(total - sumDisplayed).toFixed(3));
   });
-  stacked.push({ name: "Other fields", color: "#b8b8b8", data: otherData });
+  const stacked = [...fieldSeries, { name: "Other fields", color: "#b8b8b8", data: otherData }];
 
   await renderProductionChart(
     document.getElementById("production-chart"),
-    periods.map(formatPeriodShort),
+    displayPeriods,
     stacked,
-    { name: "Total", color: "#1a1a1a", data: periods.map((p) => monthlyByPeriod.get(p) ?? null) }
+    { name: "Total", color: "#1a1a1a", data: totalData }
   );
 
+  const unitLabel = annual ? `${displayPeriods.length} year(s) (annual average)` : `${periods.length} months`;
   document.getElementById("production-summary").textContent =
-    `Top ${selectedSlugs.length} field(s) shown plus Other fields, over ${periods.length} months.`;
+    `Top ${selectedSlugs.length} field(s) shown plus Other fields, over ${unitLabel}.`;
 }

@@ -36,6 +36,55 @@ def test_default_split_is_commodity_stacked_with_total_overlay(load_app):
     assert option["series"][2]["data"] == [15.0, 16.0, 18.0]
 
 
+def test_annual_average_toggle_aggregates_the_commodity_split(load_app):
+    page = load_app("")
+    page.wait_for_selector("#production-stats details")
+    page.check('input[name="pfreq"][value="annual"]')
+    page.wait_for_timeout(200)
+    assert "pfreq=annual" in page.url
+    option = page.evaluate("() => window.__echartsCharts['production-chart']")
+    # All three fixture months (202401-202403) fall in 2024, so the
+    # annual toggle must collapse them into exactly one averaged point.
+    assert option["xAxis"]["data"] == ["2024"]
+    liquids, gas, total = (s["data"] for s in option["series"])
+    assert liquids == [11.0]  # (10+11+12)/3
+    assert gas == [pytest.approx(5.333, abs=0.001)]  # (5+5+6)/3
+    assert total == [pytest.approx(16.333, abs=0.001)]  # (15+16+18)/3
+    assert "Annual average" in page.locator("#production-active-filters").text_content()
+
+
+def test_switching_back_to_monthly_restores_the_original_series(load_app):
+    page = load_app("psplit=commodity&pfreq=annual")
+    page.wait_for_selector("#production-stats details")
+    page.check('input[name="pfreq"][value="monthly"]')
+    page.wait_for_timeout(200)
+    assert "pfreq=" not in page.url
+    option = page.evaluate("() => window.__echartsCharts['production-chart']")
+    assert option["series"][2]["data"] == [15.0, 16.0, 18.0]
+
+
+def test_annual_average_field_split_still_reconciles_to_total(load_app):
+    page = load_app("psplit=field&pfreq=annual")
+    page.wait_for_selector("#production-stats details")
+    option = page.evaluate("() => window.__echartsCharts['production-chart']")
+    series_by_name = {s["name"]: s["data"] for s in option["series"]}
+    assert option["xAxis"]["data"] == ["2024"]
+    total = series_by_name["Total"][0]
+    displayed_sum = (
+        series_by_name["Alpha Field"][0] + series_by_name["Beta Field"][0] + series_by_name["Other fields"][0]
+    )
+    assert abs(displayed_sum - total) < 0.01
+
+
+def test_annual_average_company_split_shows_one_point_per_year(load_app):
+    page = load_app("psplit=company&pfreq=annual")
+    page.wait_for_selector("#production-stats details")
+    option = page.evaluate("() => window.__echartsCharts['production-chart']")
+    assert option["xAxis"]["data"] == ["2024"]
+    alpha = next(s for s in option["series"] if s["name"] == "Alpha Group")
+    assert alpha["data"] == [pytest.approx(8.667, abs=0.001)]  # (8.0+8.5+9.5)/3
+
+
 def test_reconciled_grouping_statistics_are_shown_correctly(load_app):
     """Regression test for the fixed defect: distinct APPROVED groups
     must never be conflated with the unresolved singleton-fallback
