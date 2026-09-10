@@ -238,7 +238,7 @@ def test_company_groups_field_breakdown_collapses_unresolved_same_as_totals():
 
     # Must not raise - group-level total reconciles exactly with the
     # field breakdown summed across that group's fields.
-    diff = validate_company_field_breakdown_reconciliation(company_groups_overview, breakdown)
+    diff = validate_company_field_breakdown_reconciliation(company_groups_overview, breakdown, tolerance=1e-9)
     assert diff < 1e-9
 
 
@@ -249,10 +249,58 @@ def test_company_field_breakdown_reconciliation_catches_a_dropped_field():
     # Tampered: the field breakdown for this group is missing entirely.
     breakdown = {"GROUP": {}}
     try:
-        validate_company_field_breakdown_reconciliation(company_groups_overview, breakdown)
+        validate_company_field_breakdown_reconciliation(company_groups_overview, breakdown, tolerance=1e-9)
         assert False, "must raise when the field breakdown drops production the group total carries"
     except OverviewError as e:
         assert "GROUP" in str(e)
+
+
+def test_company_field_breakdown_reconciliation_needs_a_real_tolerance_not_exact_equality():
+    """Regression test for a real build failure (2026-09-10 continuation
+    live rebuild): each field-period total_mboed and each group-period
+    total_mboed is independently rounded ONCE at serialization from its
+    own full-precision value - summing several independently-rounded
+    field values does not, in general, land on the exact same rounded
+    total as a SEPARATELY-rounded group aggregate, even when both derive
+    from identical underlying full-precision numbers (double-rounding).
+    A near-zero tolerance is too tight for real multi-field companies and
+    fails the build on entirely correct data; the statistically-derived
+    compute_serialization_tolerance() bound (the same one
+    validate_fields_overview_reconciliation already relies on for this
+    exact class of comparison) must pass."""
+    from etl.validate import compute_serialization_tolerance
+
+    # Five fields' TRUE (full-precision) total_mboed values - each
+    # rounded to 3 decimals independently before being summed, while the
+    # group's own total is rounded separately from the true full-
+    # precision sum, landing on a different 3-decimal value than the sum
+    # of the individually-rounded fields (a real divergence this
+    # magnitude - 0.002 - was observed in an actual live rebuild).
+    true_values = [15.435324, 12.394422, 4.160301, 14.111258, 49.170498]
+    field_breakdown = {
+        "GROUP": {
+            f"FIELD {i}": {
+                "series": [{"period": "201303", "total_mboed": {"value": round(v, 3), "status": "complete"}}]
+            }
+            for i, v in enumerate(true_values)
+        }
+    }
+    field_sum = sum(round(v, 3) for v in true_values)
+    group_total = round(sum(true_values), 3)
+    assert field_sum != group_total  # the double-rounding divergence this test exists to cover
+
+    company_groups_overview = {
+        "GROUP": {"series": [{"period": "201303", "total_mboed": {"value": group_total, "status": "complete"}}]}
+    }
+
+    try:
+        validate_company_field_breakdown_reconciliation(company_groups_overview, field_breakdown, tolerance=1e-9)
+        assert False, "a near-zero tolerance should have rejected this double-rounded divergence"
+    except OverviewError:
+        pass
+
+    tolerance = compute_serialization_tolerance(n_field_entries=5, n_operator_entries=1, round_decimals=3)
+    validate_company_field_breakdown_reconciliation(company_groups_overview, field_breakdown, tolerance=tolerance)  # must not raise
 
 
 # ---------------------------------------------------------------------------

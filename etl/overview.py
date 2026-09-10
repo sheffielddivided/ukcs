@@ -222,14 +222,28 @@ def build_company_groups_field_breakdown_overview(
 def validate_company_field_breakdown_reconciliation(
     company_groups_overview: dict[str, dict],
     company_groups_field_breakdown: dict[str, dict],
-    tolerance: float = 1e-6,
+    tolerance: float,
 ) -> float:
     """Build-breaking invariant: for every company group and period,
     summing that group's per-field total_mboed values must reproduce
     that SAME group's own company_groups_overview total_mboed value
-    EXACTLY (None-safe: a group-level None value must never coincide
-    with a non-None field-breakdown value for the same period - both
-    must equally mean 'unavailable')."""
+    within `tolerance` (None-safe: a group-level None value must never
+    coincide with a non-None field-breakdown value for the same period -
+    both must equally mean 'unavailable').
+
+    NOT an exact-equality check: each field-period total_mboed and each
+    group-period total_mboed was independently rounded once at
+    serialization (round_mboed(), 3 decimals) from its own full-precision
+    value - summing several independently-3-decimal-rounded field values
+    does not, in general, exactly equal a SEPARATELY-rounded group total
+    even though both derive from the same underlying full-precision
+    numbers (double-rounding). `tolerance` should be the same
+    statistically-derived bound `etl/validate.py`'s
+    compute_serialization_tolerance() already provides for this exact
+    class of comparison (independently-rounded-values-summed vs a
+    separately-rounded aggregate) elsewhere in this pipeline - a fixed
+    epsilon here would either be too tight (spurious build failures) or
+    an arbitrary guess."""
     max_diff = 0.0
     offenders = []
     for group, doc in company_groups_overview.items():

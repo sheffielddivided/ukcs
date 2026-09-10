@@ -657,8 +657,15 @@ def main() -> int:
         overview_company_groups_field_breakdown = build_company_groups_field_breakdown_overview(
             equity_result["resolved_rows"], equity_derived_status_by_period, company_groups_mapping
         )
+        company_field_breakdown_tolerance = compute_serialization_tolerance(
+            n_field_entries=sum(
+                len(f["series"]) for group in overview_company_groups_field_breakdown.values() for f in group.values()
+            ),
+            n_operator_entries=sum(len(doc["series"]) for doc in overview_company_groups.values()),
+            round_decimals=3,
+        )
         validate_company_field_breakdown_reconciliation(
-            overview_company_groups, overview_company_groups_field_breakdown
+            overview_company_groups, overview_company_groups_field_breakdown, tolerance=company_field_breakdown_tolerance
         )
 
         overview_legal_entities = build_legal_entities_overview(equity_company_docs)
