@@ -38,10 +38,14 @@
       Field outlines shown on the map are NSTA's own authoritative "UKCS petroleum field
       determinations (WGS84)" polygons &mdash; a separate dataset from the production figures above,
       matched to production field names by exact and normalised name matching only (no fuzzy
-      matching). Not every producing field currently has a matched boundary (matching is measured and
-      recorded in <a href="./data/meta.json">data/meta.json</a>'s <code>sources.field_polygons</code>
-      block on every build); a field without a matched polygon is never removed from the map &mdash;
-      it still shows as a marker, exactly as before this dataset existed.
+      matching). A field with a matched boundary is shown entirely via its polygon: the polygon's
+      fill is coloured by the field's dominant commodity (the same oil/gas colouring markers used
+      previously), and hovering it shows the same production detail a marker's popup used to show.
+      Not every producing field currently has a matched boundary (matching is measured and recorded
+      in <a href="./data/meta.json">data/meta.json</a>'s <code>sources.field_polygons</code> block on
+      every build); a field without a matched polygon is never removed from the map &mdash; it falls
+      back to a coloured marker dot instead, exactly as every field was shown before this dataset
+      existed.
     </p>
 
     <h2>Derived production measures (mboe/d)</h2>

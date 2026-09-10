@@ -115,3 +115,139 @@ def test_layer_toggles_control_bubble_and_outline_visibility(load_app):
     )
     assert circles_visibility_2 == "visible"
     assert fill_visibility_2 == "none"  # unchanged - still off
+
+
+# --- Polygon colour fill + popup-on-polygon (2026-09-10 continuation) -----
+# Matched fields are now coloured/popup'd via their polygon, not a circle
+# dot; the circle layer is filtered down to ONLY fields with no polygon
+# match at all (fixture: "murlach-pt-of-marnock-skua" has no polygon
+# representation, "alpha-field" does), so a producing field is never
+# dropped from the map even though polygon match rate is well under 100%.
+
+
+def test_matched_polygon_fill_is_coloured_by_commodity(load_app):
+    """alpha-field has liquids_mboed(10)/total_mboed(12) >= 0.5, so its
+    matched polygon's fill must carry the same "oil" colour the circle
+    layer would have used - production colour now lives on the polygon."""
+    page = load_app()
+    _wait_for_polygon_layer(page)
+    fill_color = page.evaluate(
+        "() => window.__lastMapInstance.getLayer('field-polygons-fill').paint['fill-color']"
+    )
+    assert fill_color == ["match", ["get", "commodity"], "oil", "#eb6834", "gas", "#2a78d6", "none", "#898781", "#5b6b7a"]
+
+
+def test_circle_layer_is_filtered_to_fields_with_no_polygon_match(load_app):
+    """murlach-pt-of-marnock-skua has no polygon at all in
+    field_polygons.geojson - it must remain reachable via the (fallback)
+    circle layer. alpha-field IS matched, so it must be excluded from the
+    circle layer's filter (its colour/popup now live on the polygon)."""
+    page = load_app()
+    _wait_for_polygon_layer(page)
+    circle_filter = page.evaluate(
+        "() => window.__lastMapInstance.getLayer('fields-circles').filter"
+    )
+    assert circle_filter == ["all", ["!", ["in", ["get", "slug"], ["literal", ["alpha-field"]]]]]
+
+
+def test_hovering_matched_polygon_shows_popup_with_field_detail(load_app):
+    page = load_app()
+    _wait_for_polygon_layer(page)
+
+    page.evaluate(
+        """() => {
+            window.__lastMapInstance._emitLayerEvent('mouseenter', 'field-polygons-fill', {
+                properties: {
+                    matched_pprs_slug: 'alpha-field',
+                    matched_pprs_field: 'ALPHA FIELD',
+                    field_no: '001',
+                    determination_status: 'CURRENT',
+                    field: 'ALPHA FIELD',
+                    operator: 'EXAMPLE OPERATOR LIMITED',
+                    region: 'CNS',
+                    location: 'Offshore',
+                    period: '202601',
+                    oil_mbd: 10.0,
+                    condensate_mbd: 0.1,
+                    assoc_gas_mmscfd: 1.0,
+                    dry_gas_mmscfd: 4.5,
+                    water_mbd: 2.0,
+                    unit_count: 1,
+                    storage_unit_count: 0,
+                },
+                lngLat: { lng: 1.5, lat: 58.0 },
+            });
+        }"""
+    )
+    assert page.evaluate("() => window.__lastPopupOpen") is True
+    html = page.evaluate("() => window.__lastPopupHtml")
+    assert "ALPHA FIELD" in html
+    assert "EXAMPLE OPERATOR LIMITED" in html
+
+
+def test_hovering_unmatched_polygon_shows_no_popup(load_app):
+    page = load_app()
+    _wait_for_polygon_layer(page)
+
+    errors = []
+    page.on("pageerror", lambda exc: errors.append(str(exc)))
+
+    page.evaluate(
+        """() => {
+            window.__lastMapInstance._emitLayerEvent('mouseenter', 'field-polygons-fill', {
+                properties: {
+                    matched_pprs_slug: null,
+                    matched_pprs_field: null,
+                    field_no: '002',
+                    determination_status: 'CURRENT',
+                },
+                lngLat: { lng: 3.1, lat: 59.1 },
+            });
+        }"""
+    )
+    assert errors == []
+    assert page.evaluate("() => window.__lastPopupOpen") is not True
+
+
+def test_operator_filter_combines_with_polygon_match_base_filter_and_covers_polygons(load_app):
+    page = load_app()
+    _wait_for_polygon_layer(page)
+
+    page.evaluate(
+        """() => {
+            window.__lastMapInstance._emitLayerEvent('click', 'field-polygons-fill', {
+                properties: {
+                    matched_pprs_slug: 'alpha-field',
+                    matched_pprs_field: 'ALPHA FIELD',
+                    field_no: '001',
+                    determination_status: 'CURRENT',
+                },
+            });
+        }"""
+    )
+    page.wait_for_timeout(200)
+
+    page.select_option("#operator-filter", "EXAMPLE OPERATOR LIMITED")
+    page.wait_for_timeout(200)
+
+    circle_filter = page.evaluate(
+        "() => window.__lastMapInstance.getLayer('fields-circles').filter"
+    )
+    assert circle_filter == [
+        "all",
+        ["!", ["in", ["get", "slug"], ["literal", ["alpha-field"]]]],
+        ["==", ["get", "operator"], "EXAMPLE OPERATOR LIMITED"],
+    ]
+
+    polygon_filter = page.evaluate(
+        "() => window.__lastMapInstance.getLayer('field-polygons-fill').filter"
+    )
+    assert polygon_filter == [
+        "any",
+        ["!", ["to-boolean", ["get", "matched_pprs_slug"]]],
+        ["==", ["get", "operator"], "EXAMPLE OPERATOR LIMITED"],
+    ]
+    outline_filter = page.evaluate(
+        "() => window.__lastMapInstance.getLayer('field-polygons-outline').filter"
+    )
+    assert outline_filter == polygon_filter

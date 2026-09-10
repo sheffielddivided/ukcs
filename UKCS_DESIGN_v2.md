@@ -2102,3 +2102,57 @@ latent CSS-only defects. A new regression test
 `tests/frontend/test_production_frontend.py`) asserts the real computed `display` value, not just
 the DOM `hidden` property, and asserts the Fields-map-only sidebar is genuinely absent from the
 render tree while Production is active.
+
+### 17.7 Production overview — Monthly/Annual average toggle (2026-09-10) — IMPLEMENTED
+
+Requested: "The production chart should also have an option for showing annual averages in
+addition to monthly." Added a Monthly/Annual radio toggle (`#production-freq-toggle`, URL key
+`pfreq`) to all three Production splits (commodity, company, field), entirely client-side -
+`docs/app/production.js`'s `aggregateSeriesAnnual()` averages only non-null months for a given
+year (never treats a missing month as zero), rounds to 3 decimals, and returns `null` for a year
+with zero known months. The field split's "Other fields" residual is recomputed at whichever grain
+is displayed (`Total_annual - sum(displayed_annual)`), not by aggregating an already-computed
+monthly residual, so the displayed-sum-equals-total reconciliation identity holds exactly at
+either grain. Tested in `tests/frontend/test_production_frontend.py`
+(`test_annual_average_toggle_aggregates_the_commodity_split`,
+`test_switching_back_to_monthly_restores_the_original_series`,
+`test_annual_average_field_split_still_reconciles_to_total`,
+`test_annual_average_company_split_shows_one_point_per_year`).
+
+### 17.8 Field map — commodity-coloured polygon fill replaces circle dots for matched fields (2026-09-10) — IMPLEMENTED
+
+Requested: "instead of showing the colored dots, I want to use those colors as fill on the field
+polygons... and the colored dots can then be removed." Implemented as a hybrid rather than an
+unconditional removal, to preserve the pre-existing invariant (17.2/Workstream 3): "Polygon
+absence must never remove a producing field from the map" - field/polygon match rate is well
+under 100% (measured per build in `data/meta.json`'s `sources.field_polygons` block).
+
+- `docs/app/map.js`'s `enrichPolygonsWithFieldProperties()` copies each matched polygon's full
+  field properties (commodity, production figures, operator, etc - everything
+  `computeDerivedProperties()` and the ETL already publish on `fields.geojson`) onto the polygon
+  feature itself, keyed by `matched_pprs_slug`.
+- `field-polygons-fill`'s paint is recoloured by the same dominant-commodity `match` expression
+  the circle layer used (oil/gas/none), and its hover handlers now build and show the popup
+  (`buildPopupHtml`) directly from the polygon's own (enriched) properties - the click handler's
+  resolution path (`{slug: matched_pprs_slug, fromPolygon: true}`) is unchanged.
+- The circle layer (`fields-circles`) is filtered, once at load, to only the fields with **no**
+  polygon match at all (`circleBaseFilter`) - so a field like the fixture's
+  `murlach-pt-of-marnock-skua` (no polygon representation whatsoever) still renders as a dot,
+  while a matched field like `alpha-field` is excluded from the circle layer entirely, its colour
+  and popup living solely on its polygon.
+- `filterByOperator()` now combines two independent filter concerns per layer
+  (`circleBaseFilter`/`currentOperatorFilter` via `applyCircleFilter()` for the circle layer) and
+  additionally filters the polygon layers by operator, while always keeping genuinely-unmatched
+  polygons (no production data, no `operator` property) visible regardless of the selected
+  operator.
+
+Tested in `tests/frontend/test_field_polygons_frontend.py`
+(`test_matched_polygon_fill_is_coloured_by_commodity`,
+`test_circle_layer_is_filtered_to_fields_with_no_polygon_match`,
+`test_hovering_matched_polygon_shows_popup_with_field_detail`,
+`test_hovering_unmatched_polygon_shows_no_popup`,
+`test_operator_filter_combines_with_polygon_match_base_filter_and_covers_polygons`), using the
+fixture's `murlach-pt-of-marnock-skua` field (which the existing `field_polygons.geojson` fixture
+never matched to a polygon) as the fallback case. The `maplibre-gl.mjs` test stub's `Popup` class
+was extended with `window.__lastPopupHtml`/`window.__lastPopupOpen` test hooks (mirroring the
+`window.__echartsCharts` pattern) since it previously exposed no state a test could assert on.

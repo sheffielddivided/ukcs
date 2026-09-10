@@ -133,13 +133,17 @@ export class Popup {
   setLngLat() {
     return this;
   }
-  setHTML() {
+  setHTML(html) {
+    this._html = html;
+    window.__lastPopupHtml = html;
     return this;
   }
   addTo() {
+    window.__lastPopupOpen = true;
     return this;
   }
   remove() {
+    window.__lastPopupOpen = false;
     return this;
   }
 }

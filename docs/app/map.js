@@ -37,10 +37,13 @@ const CIRCLE_LAYER_ID = "fields-circles";
 
 // Authoritative field polygons (spec Workstream 3, approved 2026-09-10):
 // NSTA's own field-determination geometry (docs/data/field_polygons.geojson,
-// ETL-matched to PPRS field names - see etl/field_polygons.py). Polygon
-// absence for a field never removes it from the map - the circle layer
-// above remains the fallback for every field, matched or not (spec:
-// "Polygon absence must never remove a producing field from the map.").
+// ETL-matched to PPRS field names - see etl/field_polygons.py). A field
+// with a matched polygon is shown via the polygon's own commodity-coloured
+// fill (see enrichPolygonsWithFieldProperties below) - the circle layer
+// is filtered down to ONLY fields with no polygon match, so polygon
+// absence still never removes a producing field from the map (spec:
+// "Polygon absence must never remove a producing field from the map."),
+// it just falls back to a dot instead of a coloured polygon.
 const POLYGON_SOURCE_ID = "field-polygons";
 const POLYGON_FILL_LAYER_ID = "field-polygons-fill";
 const POLYGON_OUTLINE_LAYER_ID = "field-polygons-outline";
@@ -49,6 +52,24 @@ const POLYGON_SELECTED_LAYER_ID = "field-polygons-selected";
 // here; below this the circle layer alone carries the map (still with
 // low-prominence outlines available via the layer toggle).
 const POLYGON_PROMINENT_MIN_ZOOM = 7;
+
+// Circle layer filtering combines two independent, orthogonal concerns -
+// which fields have no polygon match (set once, at load, never changes
+// afterwards) and which operator is currently selected (changes on every
+// dropdown interaction) - tracked separately so neither one can silently
+// clobber the other via a raw map.setFilter() call. Module-level by the
+// same convention already used for this app's singleton map/chart
+// instances (only one map is ever created per page load).
+let circleBaseFilter = null;
+let currentOperatorFilter = null;
+
+function applyCircleFilter(map) {
+  if (!map.getLayer(CIRCLE_LAYER_ID)) return;
+  const clauses = ["all"];
+  if (circleBaseFilter) clauses.push(circleBaseFilter);
+  if (currentOperatorFilter) clauses.push(currentOperatorFilter);
+  map.setFilter(CIRCLE_LAYER_ID, clauses.length > 1 ? clauses : null);
+}
 
 function computeDerivedProperties(fieldsGeojson) {
   // Adds commodity (oil/gas/none, for marker colour) from the two
@@ -67,6 +88,27 @@ function computeDerivedProperties(fieldsGeojson) {
     }
   }
   return fieldsGeojson;
+}
+
+// Copies each matched polygon's field properties (commodity, total_mboed,
+// operator, period figures, etc - everything computeDerivedProperties and
+// the ETL already published on fields.geojson) onto the polygon feature
+// itself, keyed by matched_pprs_slug. This is what lets the polygon fill
+// be coloured by commodity and the popup show full production detail
+// directly from the polygon, instead of a separate circle marker -
+// mutates fieldPolygonsGeojson in place (the caller owns the parsed
+// object; nothing else reads it before this runs). Polygons with no
+// PPRS match keep only their own NSTA determination fields (field_no,
+// determination_status, ...) and are left uncoloured/unclickable.
+function enrichPolygonsWithFieldProperties(fieldPolygonsGeojson, fieldsBySlug) {
+  for (const feature of fieldPolygonsGeojson.features) {
+    const slug = feature.properties.matched_pprs_slug;
+    const fieldProps = slug ? fieldsBySlug.get(slug) : null;
+    if (fieldProps) {
+      feature.properties = { ...feature.properties, ...fieldProps };
+    }
+  }
+  return fieldPolygonsGeojson;
 }
 
 function buildPopupHtml(properties) {
@@ -128,6 +170,13 @@ export function initMap(containerId, fieldsGeojsonRaw, onFieldClick, fieldPolygo
   map.on("load", () => {
     map.addSource(SOURCE_ID, { type: "geojson", data: fieldsGeojson });
 
+    // Circle markers are commodity-coloured dots, same as before - but
+    // once polygons are available they are FILTERED to only the fields
+    // with no matched polygon (setCircleFilter below), since a matched
+    // field's colour and popup now come from its polygon fill instead.
+    // Kept unfiltered as the full, original marker layer whenever
+    // polygons failed to load at all (graceful degradation - spec:
+    // "A failed optional panel/data fetch must not take down... the map").
     map.addLayer({
       id: CIRCLE_LAYER_ID,
       type: "circle",
@@ -158,13 +207,34 @@ export function initMap(containerId, fieldsGeojsonRaw, onFieldClick, fieldPolygo
       },
     });
 
+    const popup = new Popup({
+      closeButton: false,
+      closeOnClick: false,
+      maxWidth: "280px",
+    });
+
     // Authoritative field-determination polygons (spec Workstream 3) -
     // added even if there are zero polygons this build, so the layer
     // toggle always has something to attach to; a genuinely empty
-    // FeatureCollection just renders nothing. Neutral fill (spec:
-    // "Do not colour polygons by company"), low prominence below
+    // FeatureCollection just renders nothing. A matched polygon's fill is
+    // coloured by the SAME dominant-commodity logic the circle markers
+    // use (not by company - see computeDerivedProperties), carries the
+    // popup and click behaviour that used to live on the circle for that
+    // field, and is the one place that field's colour now appears -
+    // unmatched polygons (no corresponding PPRS field) stay a neutral,
+    // unclickable fill with no popup, low prominence below
     // POLYGON_PROMINENT_MIN_ZOOM, full prominence at/above it.
     if (fieldPolygonsGeojson) {
+      const fieldsBySlug = new Map(
+        fieldsGeojson.features.map((f) => [f.properties.slug, f.properties])
+      );
+      enrichPolygonsWithFieldProperties(fieldPolygonsGeojson, fieldsBySlug);
+      const matchedSlugs = new Set(
+        fieldPolygonsGeojson.features
+          .map((f) => f.properties.matched_pprs_slug)
+          .filter(Boolean)
+      );
+
       map.addSource(POLYGON_SOURCE_ID, { type: "geojson", data: fieldPolygonsGeojson });
 
       map.addLayer({
@@ -172,11 +242,19 @@ export function initMap(containerId, fieldsGeojsonRaw, onFieldClick, fieldPolygo
         type: "fill",
         source: POLYGON_SOURCE_ID,
         paint: {
-          "fill-color": "#5b6b7a",
+          "fill-color": [
+            "match",
+            ["get", "commodity"],
+            "oil", "#eb6834",
+            "gas", "#2a78d6",
+            "none", "#898781",
+            "#5b6b7a", // unmatched polygon - no commodity property at all
+          ],
           "fill-opacity": [
-            "interpolate", ["linear"], ["zoom"],
-            POLYGON_PROMINENT_MIN_ZOOM - 2, 0.05,
-            POLYGON_PROMINENT_MIN_ZOOM, 0.18,
+            "case",
+            ["has", "commodity"],
+            ["interpolate", ["linear"], ["zoom"], POLYGON_PROMINENT_MIN_ZOOM - 2, 0.3, POLYGON_PROMINENT_MIN_ZOOM, 0.75],
+            ["interpolate", ["linear"], ["zoom"], POLYGON_PROMINENT_MIN_ZOOM - 2, 0.05, POLYGON_PROMINENT_MIN_ZOOM, 0.18],
           ],
         },
       });
@@ -212,33 +290,44 @@ export function initMap(containerId, fieldsGeojsonRaw, onFieldClick, fieldPolygo
         },
       });
 
-      map.on("mouseenter", POLYGON_FILL_LAYER_ID, () => {
+      // Dots are now redundant for any field with a matched, coloured
+      // polygon - the circle layer is filtered down to ONLY the fields
+      // that have no polygon match, so every producing field still shows
+      // somewhere (spec: "Polygon absence must never remove a producing
+      // field from the map"), just via a dot instead of a coloured
+      // polygon when there is no polygon to colour.
+      circleBaseFilter = ["!", ["in", ["get", "slug"], ["literal", [...matchedSlugs]]]];
+      applyCircleFilter(map);
+
+      map.on("mouseenter", POLYGON_FILL_LAYER_ID, (e) => {
+        const props = e.features[0].properties;
+        if (!props.field) return; // unmatched polygon - no production data to show
         map.getCanvas().style.cursor = "pointer";
+        popup.setLngLat(e.lngLat).setHTML(buildPopupHtml(props)).addTo(map);
+      });
+      map.on("mousemove", POLYGON_FILL_LAYER_ID, (e) => {
+        const props = e.features[0].properties;
+        if (!props.field) return;
+        popup.setLngLat(e.lngLat).setHTML(buildPopupHtml(props));
       });
       map.on("mouseleave", POLYGON_FILL_LAYER_ID, () => {
         map.getCanvas().style.cursor = "";
+        popup.remove();
       });
       if (onFieldClick) {
         map.on("click", POLYGON_FILL_LAYER_ID, (e) => {
           const props = e.features[0].properties;
           if (!props.matched_pprs_slug) return; // unmatched polygon - no field to open
-          // A polygon's own attributes are NSTA determination fields
-          // (field_no, determination_status, ...), not production
-          // properties. Signal a polygon-originated click by slug only
-          // (fromPolygon: true) so the caller resolves full field
-          // properties from its own index - the same resolution path
-          // already used for a search result with no latest-period
-          // marker (clicking either geometry opens the same panel).
+          // A polygon's own attributes now include the full matched
+          // field's properties (enrichPolygonsWithFieldProperties above),
+          // but the resolution path via slug + fromPolygon is kept
+          // unchanged so main.js's existing resolveFieldClick() -
+          // preferring the current-period fields.geojson feature - stays
+          // the single source of truth for "what a field click opens".
           onFieldClick({ slug: props.matched_pprs_slug, fromPolygon: true });
         });
       }
     }
-
-    const popup = new Popup({
-      closeButton: false,
-      closeOnClick: false,
-      maxWidth: "280px",
-    });
 
     map.on("mouseenter", CIRCLE_LAYER_ID, (e) => {
       map.getCanvas().style.cursor = "pointer";
@@ -294,11 +383,27 @@ export function setSelectedFieldPolygon(map, slug) {
   map.setFilter(POLYGON_SELECTED_LAYER_ID, ["==", ["get", "matched_pprs_slug"], slug || "__none__"]);
 }
 
+// Filters the map by operator - combines with (never replaces) the
+// circle layer's own "no polygon match" base filter, and additionally
+// filters the polygon layers themselves now that a matched polygon
+// carries its field's operator. An unmatched polygon (no production
+// data at all) has no `operator` property and is never filtered out by
+// this - it stays visible at its usual neutral fill regardless of which
+// operator is selected, since it is not "a field" this filter concerns.
 export function filterByOperator(map, operator) {
-  if (!map.getLayer(CIRCLE_LAYER_ID)) return;
-  if (!operator) {
-    map.setFilter(CIRCLE_LAYER_ID, null);
-  } else {
-    map.setFilter(CIRCLE_LAYER_ID, ["==", ["get", "operator"], operator]);
+  currentOperatorFilter = operator ? ["==", ["get", "operator"], operator] : null;
+  applyCircleFilter(map);
+
+  if (map.getLayer(POLYGON_FILL_LAYER_ID)) {
+    // GeoJSON properties always carry the matched_pprs_slug KEY (the
+    // ETL always writes it), just null when unmatched - ["has", ...]
+    // would see the key as present regardless, so this coerces to a
+    // real boolean truthiness check instead (matches the JS click
+    // handler's own `if (!props.matched_pprs_slug) return` check).
+    const polygonFilter = operator
+      ? ["any", ["!", ["to-boolean", ["get", "matched_pprs_slug"]]], ["==", ["get", "operator"], operator]]
+      : null;
+    map.setFilter(POLYGON_FILL_LAYER_ID, polygonFilter);
+    map.setFilter(POLYGON_OUTLINE_LAYER_ID, polygonFilter);
   }
 }
