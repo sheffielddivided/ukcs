@@ -129,8 +129,8 @@ export async function renderFieldAnnualChart(el, years, oilMboed, gasMboed) {
     xAxis: { type: "category", data: years },
     yAxis: { type: "value", name: "mboe/d" },
     series: [
-      { name: "Oil", type: "bar", color: "#eb6834", data: oilMboed },
-      { name: "Gas", type: "bar", color: "#2a78d6", data: gasMboed },
+      { name: "Oil", type: "bar", stack: "production", color: "#eb6834", data: oilMboed },
+      { name: "Gas", type: "bar", stack: "production", color: "#2a78d6", data: gasMboed },
     ],
   });
   return fieldAnnualChart;

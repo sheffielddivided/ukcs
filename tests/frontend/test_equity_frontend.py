@@ -379,6 +379,9 @@ def test_field_panel_shows_annual_oil_gas_bar_chart_not_monthly_lines(load_app, 
     assert set(series_by_name) == {"Oil", "Gas"}
     assert series_by_name["Oil"]["type"] == "bar"
     assert series_by_name["Gas"]["type"] == "bar"
+    # Oil and Gas render as one stacked bar per year, not side-by-side.
+    assert series_by_name["Oil"]["stack"] == series_by_name["Gas"]["stack"]
+    assert series_by_name["Oil"]["stack"]
     # Oil = oil_mbd + condensate_mbd, averaged over the year's months.
     # 2025: (10.5+0.2 + 9.8+0.18) / 2 = 10.34; 2026: 10.0+0.15 = 10.15.
     assert series_by_name["Oil"]["data"] == [pytest.approx(10.34, abs=0.001), pytest.approx(10.15, abs=0.001)]
