@@ -1960,7 +1960,45 @@ implemented, end to end:
   `tests/frontend/fixtures/docs/data/overview/`) covering the default view, all three splits,
   both grains, the retrospective caveat, drill-down detail, Top-N + Other reconciliation, filters,
   empty state, URL round-tripping, view-switch isolation, and the legacy-deep-link fallback.
-- **Not yet implemented**: the Current licence-portfolio frontend (ETL artifacts from Workstream 4
-  already exist; no frontend view consumes them yet — `docs/index.html`'s "Licence portfolio" nav
-  item currently shows a placeholder) and the Historical licence-interest pipeline/frontend
-  (neither the ETL nor the frontend exists yet).
+- **Not yet implemented (at the time of section 17.3)**: the Current licence-portfolio frontend
+  and the Historical licence-interest pipeline/frontend. See 17.4 below - the former is now done.
+
+### 17.4 Deliverable 2 — Current licence-portfolio frontend (2026-09-10) — IMPLEMENTED
+
+`docs/app/licence.js` renders the existing Workstream 4 artifacts
+(`docs/data/licence_portfolio_index.json`, `licence_portfolio.geojson`) on their own, fully
+isolated MapLibre instance - a separate map object/source/layer set from the Fields map, so
+switching top-level views never leaks layers, filters, selection, or URL state between the two.
+"Current portfolio" (default) and "Historical interests" (placeholder - depends on Deliverable 3,
+not yet implemented; explicitly states historical equity percentages cannot be reconstructed)
+sub-views within the "Licence portfolio" top-level nav item.
+
+Controls: searchable company-group filter, operated/non-operated filter, licence-status filter, a
+searchable selected-licence filter, "Fit portfolio", "Clear filters" - all combining via a single
+AND-ed MapLibre filter expression, with the on-screen summary (distinct licences, distinct
+subareas, operated/non-operated counts) always recomputed from the currently filtered feature set
+client-side, not a cached per-group figure, so it stays correct under any combination of filters.
+Selected-subarea detail panel shows licence number/reference, block/subarea, status, equity
+percentage, operator, equity holder (this source's own current-group-level field - see
+methodology), operated/non-operated, licence start/end dates, and source attribution pulled from
+`meta.json`'s `sources.licence_portfolio`. No area/hectarage figure anywhere in this view (no
+projected-CRS methodology has been implemented or tested).
+
+Full URL-state integration via the `l*` keys already reserved in `urlstate.js`
+(`lmode`/`lgroup`/`loperated`/`lstatus`/`llicence`). Own error isolation
+(`showError`/`clearError`, `DataLoadError`-aware). 13 new Playwright tests
+(`tests/frontend/test_licence_frontend.py`) against a small synthetic fixture, covering: view
+isolation from the Fields map, the current-portfolio default, the historical placeholder's exact
+wording, map layer creation (colour + text label), filtered summary correctness, combined filters,
+clear filters, "Fit portfolio", the detail panel's required fields, the no-area-figure invariant,
+empty-result handling, and URL-state round-tripping. All 79 frontend tests and 252 ETL tests pass.
+
+One concurrency defect was found and fixed during this work: `licence.js`'s map-creation function
+was not guarded against being called twice before the first call's async "load" event fired (once
+from the eager top-nav-driven init at startup when a URL already names `top=licence`, once again
+from the later `restoreFromUrl()` re-entry once the rest of the page's other startup fetches
+complete) - each invocation constructed its own MapLibre instance and raced on the shared module
+state. Fixed by memoizing the map-creation promise so concurrent callers always await the same
+in-flight creation.
+
+**Still not implemented**: the Historical licence-interest pipeline and frontend (Deliverable 3).

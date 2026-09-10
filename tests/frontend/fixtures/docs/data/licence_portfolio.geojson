@@ -1,0 +1,68 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[1.0, 58.0], [1.0, 58.1], [1.1, 58.1], [1.1, 58.0], [1.0, 58.0]]]
+      },
+      "properties": {
+        "licence_number": 100,
+        "licence_reference": "P100",
+        "block_reference": "1/1a",
+        "subarea_name": "ALL",
+        "licence_status": "Extant",
+        "licence_start_date": "2000-01-01",
+        "licence_end_date": null,
+        "equity_pct": 60,
+        "current_display_group": "Alpha Group",
+        "group_slug": "alpha-group",
+        "operator_group": "Alpha Group",
+        "operated": true
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[2.0, 58.0], [2.0, 58.1], [2.1, 58.1], [2.1, 58.0], [2.0, 58.0]]]
+      },
+      "properties": {
+        "licence_number": 100,
+        "licence_reference": "P100",
+        "block_reference": "1/2b",
+        "subarea_name": "ALL",
+        "licence_status": "Extant",
+        "licence_start_date": "2000-01-01",
+        "licence_end_date": null,
+        "equity_pct": 40,
+        "current_display_group": "Alpha Group",
+        "group_slug": "alpha-group",
+        "operator_group": "Beta Group",
+        "operated": false
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[3.0, 58.0], [3.0, 58.1], [3.1, 58.1], [3.1, 58.0], [3.0, 58.0]]]
+      },
+      "properties": {
+        "licence_number": 200,
+        "licence_reference": "P200",
+        "block_reference": "2/3c",
+        "subarea_name": "ALL",
+        "licence_status": "Relinquished",
+        "licence_start_date": "1995-06-01",
+        "licence_end_date": "2020-12-31",
+        "equity_pct": 100,
+        "current_display_group": "Beta Group",
+        "group_slug": "beta-group",
+        "operator_group": "Alpha Group",
+        "operated": false
+      }
+    }
+  ]
+}

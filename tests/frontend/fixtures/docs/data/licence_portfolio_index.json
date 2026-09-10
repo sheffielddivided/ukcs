@@ -1,0 +1,16 @@
+{
+  "alpha-group": {
+    "name": "Alpha Group",
+    "distinct_licence_count": 1,
+    "distinct_subarea_count": 2,
+    "operated_count": 1,
+    "non_operated_count": 1
+  },
+  "beta-group": {
+    "name": "Beta Group",
+    "distinct_licence_count": 1,
+    "distinct_subarea_count": 1,
+    "operated_count": 0,
+    "non_operated_count": 1
+  }
+}

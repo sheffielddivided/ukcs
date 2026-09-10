@@ -34,6 +34,16 @@ export class Map {
     // pattern) so committed tests can reach the map instance map.js
     // creates internally, to simulate layer click/hover events.
     window.__lastMapInstance = this;
+    // The app can now construct MORE THAN ONE Map in the same page (the
+    // Fields map plus the Licence portfolio view's own isolated
+    // instance) - both are always eagerly constructed regardless of
+    // which is the active top-level view, so __lastMapInstance alone is
+    // ambiguous about WHICH map a test just got. Keyed by container id
+    // so a test can address a specific instance unambiguously.
+    window.__mapInstancesByContainer ||= {};
+    if (typeof options.container === "string") {
+      window.__mapInstancesByContainer[options.container] = this;
+    }
   }
 
   addControl() {
@@ -96,6 +106,15 @@ export class Map {
 
   getCanvas() {
     return this._canvas;
+  }
+
+  fitBounds(bounds, options) {
+    this._lastFitBounds = { bounds, options };
+    return this;
+  }
+
+  resize() {
+    return this;
   }
 }
 

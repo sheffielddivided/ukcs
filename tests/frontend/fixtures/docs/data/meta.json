@@ -8,5 +8,12 @@
   "operators_split": false,
   "record_count": 2,
   "reporting_unit_count": 2,
-  "storage_unit_count": 0
+  "storage_unit_count": 0,
+  "sources": {
+    "licence_portfolio": {
+      "item_title": "UKCS offshore petroleum licence subareas by equity group holder (WGS84)",
+      "publisher": "North Sea Transition Authority",
+      "resolved_url": "https://example.invalid/licence-subareas"
+    }
+  }
 }

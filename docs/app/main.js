@@ -17,6 +17,7 @@ import { openEquityPanel, attachFieldOwnershipTab } from "./equity-ui.js";
 import { buildSearchIndex, attachSearchUI } from "./search.js";
 import { parseUrlState, setUrlState, currentTopView, switchTopView } from "./urlstate.js";
 import { initProductionView, refreshFromUrl as refreshProductionFromUrl } from "./production.js";
+import { initLicenceView, refreshFromUrl as refreshLicenceFromUrl } from "./licence.js";
 
 const DATA_META_URL = "./data/meta.json";
 const DATA_FIELDS_URL = "./data/fields.geojson";
@@ -311,6 +312,7 @@ function setMetricMode(mode) {
 // one view never touches the others (spec: each top-level view must fail
 // independently).
 let productionInitialized = false;
+let licenceInitialized = false;
 
 function showTopView(top) {
   document.getElementById("view-production").hidden = top !== "production";
@@ -333,6 +335,15 @@ function showTopView(top) {
   } else if (top === "production") {
     refreshProductionFromUrl().catch((err) => {
       console.error("Production view failed to refresh from URL", err);
+    });
+  } else if (top === "licence" && !licenceInitialized) {
+    licenceInitialized = true;
+    initLicenceView(document.getElementById("view-licence")).catch((err) => {
+      console.error("Licence portfolio view failed to initialize", err);
+    });
+  } else if (top === "licence") {
+    refreshLicenceFromUrl().catch((err) => {
+      console.error("Licence portfolio view failed to refresh from URL", err);
     });
   }
 }

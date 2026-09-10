@@ -266,6 +266,30 @@
       other entitlement mechanism, and should not be read as a substitute for those figures.
     </p>
 
+    <h2>Current licence portfolio</h2>
+    <p>
+      The <strong>Licence portfolio</strong> view's "Current portfolio" sub-view renders the same
+      NSTA licence-subarea-by-equity-holder dataset used for company grouping
+      (<a href="./data/licence_portfolio.geojson">data/licence_portfolio.geojson</a>), at subarea
+      grain rather than whole-licence grain, since different subareas of the same licence can have
+      different equity holders. Each subarea polygon's colour AND an "OP"/"NOP" text label both
+      encode operated/non-operated status &mdash; colour is never the only signal. The equity
+      holder and operator shown are this source's own current-group-level fields
+      (<code>EQGRPHOLD</code>/<code>OPORGGRP</code>); this dataset does not separately carry a raw
+      legal-entity name distinct from the current group, unlike the equity-production dataset used
+      elsewhere on this site. No area/hectarage figure is shown anywhere in this view: the source
+      geometry is unprojected WGS84 and no projected-CRS area methodology has been implemented or
+      tested, so an area figure would be either wrong or a fabricated-looking precision. The
+      summary metrics shown (distinct licences, distinct subareas, operated/non-operated counts)
+      are computed from the currently filtered set of subareas, not the whole dataset.
+    </p>
+    <p>
+      "Historical interests" is a placeholder pending a separate historical licence-interest
+      pipeline (not yet implemented) &mdash; it will show recorded historical licensee/operator
+      names and geometry by date only, explicitly never a historical equity percentage, which
+      cannot be reconstructed from the published NSTA source.
+    </p>
+
     <h2>Known limitation, both datasets</h2>
     <p>
       Every check in this project's build is an internal-consistency check against the data it

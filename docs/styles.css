@@ -206,6 +206,24 @@ header .subtitle {
   font-size: 0.95rem;
 }
 
+#licence-map-wrap {
+  position: relative;
+  height: 480px;
+  margin: 0.5rem 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+#licence-map {
+  position: absolute;
+  inset: 0;
+}
+
+#licence-legend {
+  margin-top: 0.5rem;
+}
+
 #sidebar {
   width: 260px;
   flex: none;
@@ -297,6 +315,16 @@ header .subtitle {
 
 .legend-swatch.none {
   background: var(--color-none);
+}
+
+.legend-swatch.licence-operated {
+  border-radius: 2px;
+  background: #1baf7a;
+}
+
+.legend-swatch.licence-nonoperated {
+  border-radius: 2px;
+  background: #eda100;
 }
 
 .legend-note {
