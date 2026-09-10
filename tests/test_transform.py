@@ -281,7 +281,8 @@ def test_operators_sum_multiple_fields_same_operator_same_period():
     assert op.name == "BIG OPERATOR"
     assert sorted(op.field_slugs) == ["field-a", "field-b"]
     assert op.series == [{"period": "200606", "oil_mbd": 15.0, "assoc_gas_mmscfd": 0.0,
-                           "dry_gas_mmscfd": 0.0, "condensate_mbd": 0.0, "water_mbd": 0.0}]
+                           "dry_gas_mmscfd": 0.0, "condensate_mbd": 0.0, "water_mbd": 0.0,
+                           "liquids_mboed": 15.0, "natural_gas_mboed": 0.0, "total_mboed": 15.0}]
 
 
 def test_operators_inherit_storage_exclusion_from_field_history():

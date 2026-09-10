@@ -19,30 +19,33 @@ import {
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
 
-// Named boe/d conversion constant for marker sizing only (spec section
-// 8.4: a derived boe_d figure is permitted in the UI only if computed in
-// the frontend, with a single named constant, displayed to the user).
-// This value is NOT written to any committed artifact - it exists solely
-// to give markers of different commodities a comparable size, and is
-// shown in the legend so the convention is never hidden.
-const GAS_MSCF_PER_BOE = 5.8;
+// Marker sizing and dominant-commodity colouring use fields.geojson's own
+// published total_mboed/liquids_mboed/natural_gas_mboed properties (spec
+// section 17, approved 2026-09-10) - these are ETL-derived, using the
+// single approved GAS_SCF_PER_BOE=6000 conversion constant
+// (etl/production_config.py), the same value recorded in meta.json's
+// production_conversion_methodology/gas_scf_per_boe fields. There is no
+// second, frontend-local conversion constant here: this file previously
+// computed its own undocumented boe/d figure for marker sizing only (a
+// gas-per-boe constant never reconciled against any cited source) -
+// removed in favour of reusing the one published, documented value, so
+// there is exactly one gas-to-boe factor anywhere in this repository
+// (tests/test_no_second_gas_conversion.py enforces this).
 
 const SOURCE_ID = "fields";
 const CIRCLE_LAYER_ID = "fields-circles";
 
 function computeDerivedProperties(fieldsGeojson) {
-  // Adds boe_d (sizing only) and commodity (oil/gas/none, for colour) to
-  // each feature's properties. Pure frontend derivation - fields.geojson
-  // itself carries only the native-unit values per spec section 8.4.
+  // Adds commodity (oil/gas/none, for marker colour) from the two
+  // already-published, already-comparable mboe/d component fields - no
+  // conversion happens here, both liquids_mboed and natural_gas_mboed
+  // are already in the same unit.
   for (const feature of fieldsGeojson.features) {
     const p = feature.properties;
-    const oil = (p.oil_mbd || 0) + (p.condensate_mbd || 0);
-    const gas = ((p.assoc_gas_mmscfd || 0) + (p.dry_gas_mmscfd || 0)) / GAS_MSCF_PER_BOE;
-    const boeD = oil + gas;
-    p.boe_d = boeD;
-    if (boeD <= 0) {
+    const total = p.total_mboed || 0;
+    if (total <= 0) {
       p.commodity = "none";
-    } else if (oil / boeD >= 0.5) {
+    } else if ((p.liquids_mboed || 0) / total >= 0.5) {
       p.commodity = "oil";
     } else {
       p.commodity = "gas";
@@ -115,12 +118,12 @@ export function initMap(containerId, fieldsGeojsonRaw, onFieldClick) {
       type: "circle",
       source: SOURCE_ID,
       paint: {
-        // Radius scales with sqrt(boe_d) per spec (View A: "Markers sized
-        // by sqrt(value)"), clamped to a sane pixel range.
+        // Radius scales with sqrt(total_mboed) per spec (View A: "Markers
+        // sized by sqrt(value)"), clamped to a sane pixel range.
         "circle-radius": [
           "interpolate",
           ["linear"],
-          ["sqrt", ["max", ["get", "boe_d"], 0]],
+          ["sqrt", ["max", ["get", "total_mboed"], 0]],
           0, 4,
           5, 8,
           10, 14,

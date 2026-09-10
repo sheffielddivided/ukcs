@@ -27,7 +27,13 @@ full E1-E9 equity rules (section 15.4) are added in Phase 2.
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass, field as dataclass_field
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from mboed import GAS_MMSCF_PER_MBOE  # noqa: E402
 
 # Fields Phase 1 depends on, and the esri type each must have. Section 6 /
 # 0.1: these are the names verified live in v2.2 - if any of them go
@@ -176,6 +182,7 @@ def validate_operator_conservation(
     field_series_by_slug: dict[str, list[dict]],
     operator_series_by_slug: dict[str, list[dict]],
     tolerance: float = 0.01,
+    keys: tuple[str, ...] = AGGREGATE_VALUE_KEYS,
 ) -> None:
     """Standing rule (promoted from a step-7 inline check, spec 9.4 / 13
     step 8): attributing every field's history to its current operator
@@ -186,8 +193,15 @@ def validate_operator_conservation(
     same invariant-based pattern as Phase 2's E1/E8 equity checks: it
     catches a field silently dropped or double-counted during rollup,
     which would otherwise produce numbers that are wrong but still look
-    individually plausible."""
-    for key in AGGREGATE_VALUE_KEYS:
+    individually plausible.
+
+    `keys` defaults to the native AGGREGATE_VALUE_KEYS but is also used
+    (spec section 17, section 6's conservation requirement) with
+    DERIVED_MBOED_KEYS for the derived liquids_mboed/natural_gas_mboed/
+    total_mboed fields - same invariant, same function, different value
+    keys and a looser tolerance passed explicitly by the caller (see
+    DERIVED_MBOED_TOLERANCE)."""
+    for key in keys:
         field_total = sum(
             point.get(key) or 0.0
             for series in field_series_by_slug.values()
@@ -207,6 +221,75 @@ def validate_operator_conservation(
                 f"{tolerance}). This indicates fields were dropped or "
                 "double-counted when attributed to operators."
             )
+
+
+# Derived field keys (spec section 17) - same conservation pattern as the
+# native AGGREGATE_VALUE_KEYS above, validated separately since they use a
+# looser, explicitly-documented tolerance (etl/production_config.py's
+# CONSERVATION_TOLERANCE_MBOED - see its docstring for why a looser
+# tolerance is warranted here specifically: summing independently-rounded
+# per-field derived values against a value computed directly from
+# operator-level native totals).
+DERIVED_MBOED_KEYS = ("liquids_mboed", "natural_gas_mboed", "total_mboed")
+
+
+def validate_derived_field_month_formula(
+    series_by_label: dict[str, list[dict]],
+    tolerance: float = 0.002,
+) -> None:
+    """Build-breaking invariant (spec section 6): for every field-month
+    (or operator-month, or company-month) entry actually written to an
+    artifact, liquids_mboed == oil_mbd + condensate_mbd,
+    natural_gas_mboed == (dry_gas_mmscfd + assoc_gas_mmscfd) / 6, and
+    total_mboed == liquids_mboed + natural_gas_mboed, recomputed from the
+    artifact's OWN serialized (already-rounded) native fields. The
+    tolerance (0.002, two units of the 3-decimal rounding policy) exists
+    because the artifact's liquids_mboed was computed from UNROUNDED
+    components and rounded once, while this check recomputes from the
+    INDEPENDENTLY-rounded oil_mbd/condensate_mbd/etc already in the same
+    artifact - the two can differ by a small, bounded, double-rounding
+    amount that is not a real defect. A difference beyond that bound
+    indicates the formula was not actually applied consistently."""
+    offenders = []
+    for label, series in series_by_label.items():
+        for point in series:
+            oil = point.get("oil_mbd") or 0.0
+            condensate = point.get("condensate_mbd") or 0.0
+            dry_gas = point.get("dry_gas_mmscfd") or 0.0
+            assoc_gas = point.get("assoc_gas_mmscfd") or 0.0
+            expected_liquids = oil + condensate
+            expected_gas = (dry_gas + assoc_gas) / GAS_MMSCF_PER_MBOE
+            expected_total = expected_liquids + expected_gas
+
+            actual_liquids = point.get("liquids_mboed")
+            actual_gas = point.get("natural_gas_mboed")
+            actual_total = point.get("total_mboed")
+
+            if actual_liquids is None or actual_gas is None or actual_total is None:
+                offenders.append(f"{label} period={point.get('period')}: missing derived field(s)")
+                continue
+
+            if abs(actual_liquids - expected_liquids) > tolerance:
+                offenders.append(
+                    f"{label} period={point.get('period')}: liquids_mboed={actual_liquids} "
+                    f"!= oil_mbd+condensate_mbd={expected_liquids} (diff {abs(actual_liquids - expected_liquids)})"
+                )
+            if abs(actual_gas - expected_gas) > tolerance:
+                offenders.append(
+                    f"{label} period={point.get('period')}: natural_gas_mboed={actual_gas} "
+                    f"!= (dry_gas_mmscfd+assoc_gas_mmscfd)/6={expected_gas} (diff {abs(actual_gas - expected_gas)})"
+                )
+            if abs(actual_total - expected_total) > tolerance:
+                offenders.append(
+                    f"{label} period={point.get('period')}: total_mboed={actual_total} "
+                    f"!= liquids_mboed+natural_gas_mboed={expected_total} (diff {abs(actual_total - expected_total)})"
+                )
+    if offenders:
+        raise ValidationError(
+            "Derived mboe/d field-month formula check failed "
+            "(spec section 6): " + "; ".join(offenders[:20])
+            + (f" (+{len(offenders) - 20} more)" if len(offenders) > 20 else "")
+        )
 
 
 def find_unclassified_storage_like_units(

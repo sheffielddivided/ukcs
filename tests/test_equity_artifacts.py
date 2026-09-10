@@ -33,6 +33,7 @@ from etl.equity_artifacts import (  # noqa: E402
     run_equity_pipeline,
     write_equity_artifacts,
 )
+from etl.equity_mboed import build_derived_status_by_period  # noqa: E402
 from etl.equity_publication_window import build_monthly_stream_data  # noqa: E402
 from etl.equity_join_historical import check_e5_historical, resolve_full_history  # noqa: E402
 from etl.equity_join import build_field_match_index  # noqa: E402
@@ -153,7 +154,8 @@ def test_unavailable_value_is_null_not_zero():
     per_field_month[("BETA", "201303")] = _entry("unmatched", oil=100.0)
     monthly_data = build_monthly_stream_data(per_field_month)
     status_by_period_stream = build_publication_status_by_period_stream(monthly_data)
-    docs = build_company_artifacts(resolved_rows, status_by_period_stream)
+    derived_status_by_period = build_derived_status_by_period(monthly_data)
+    docs = build_company_artifacts(resolved_rows, status_by_period_stream, derived_status_by_period)
     entry = docs["ACME"]["series"][0]
     assert entry["oil_mbd"]["status"] == "unavailable"
     assert entry["oil_mbd"]["value"] is None  # never 0.0 as a substitute
@@ -167,7 +169,8 @@ def test_legal_entities_remain_unmerged():
     per_field_month = {("ALPHA", "201303"): _entry("resolved", oil=10.0)}
     monthly_data = build_monthly_stream_data(per_field_month)
     status_by_period_stream = build_publication_status_by_period_stream(monthly_data)
-    docs = build_company_artifacts(resolved_rows, status_by_period_stream)
+    derived_status_by_period = build_derived_status_by_period(monthly_data)
+    docs = build_company_artifacts(resolved_rows, status_by_period_stream, derived_status_by_period)
     assert "CHRYSAOR LIMITED" in docs
     assert "CHRYSAOR PRODUCTION (U.K.) LIMITED" in docs
     assert len(docs) == 2  # never merged into one entity despite the similar name
@@ -260,7 +263,8 @@ def test_company_totals_equal_field_based_equity_totals():
     }
     monthly_data = build_monthly_stream_data(per_field_month)
     status_by_period_stream = build_publication_status_by_period_stream(monthly_data)
-    company_docs = build_company_artifacts(resolved_rows, status_by_period_stream)
+    derived_status_by_period = build_derived_status_by_period(monthly_data)
+    company_docs = build_company_artifacts(resolved_rows, status_by_period_stream, derived_status_by_period)
 
     company_total_oil = sum(e["oil_mbd"]["value"] or 0.0 for doc in company_docs.values() for e in doc["series"])
     field_total_oil = sum(r["oil_mbd"] for r in resolved_rows)
@@ -277,9 +281,10 @@ def test_company_and_index_artifacts_are_deterministic():
     per_field_month = {("ALPHA", "201303"): _entry("resolved", oil=10.0)}
     monthly_data = build_monthly_stream_data(per_field_month)
     status_by_period_stream = build_publication_status_by_period_stream(monthly_data)
+    derived_status_by_period = build_derived_status_by_period(monthly_data)
 
-    docs_a = build_company_artifacts(resolved_rows, status_by_period_stream)
-    docs_b = build_company_artifacts(resolved_rows, status_by_period_stream)
+    docs_a = build_company_artifacts(resolved_rows, status_by_period_stream, derived_status_by_period)
+    docs_b = build_company_artifacts(resolved_rows, status_by_period_stream, derived_status_by_period)
     assert docs_a == docs_b
 
     index_a = build_index(docs_a)

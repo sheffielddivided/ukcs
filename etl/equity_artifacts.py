@@ -58,8 +58,15 @@ from equity_match import (  # noqa: E402
     load_field_aliases,
     match_fields,
 )
+from equity_mboed import (  # noqa: E402
+    DERIVED_STREAMS,
+    build_derived_status_by_period,
+    derive_company_period_value,
+)
 from equity_parse import EquityParseError, parse_equity_workbook  # noqa: E402
 from equity_publication_window import build_monthly_stream_data, coverage_pct  # noqa: E402
+from mboed import round_mboed  # noqa: E402
+from production_config import GAS_SCF_PER_BOE, PRODUCTION_CONVERSION_METHODOLOGY  # noqa: E402
 from transform import round3, slugify  # noqa: E402
 
 CACHE_DIR = Path(__file__).parent / ".cache"
@@ -290,9 +297,20 @@ def build_publication_status_by_period_stream(monthly_data: dict) -> dict[str, d
 # ---------------------------------------------------------------------------
 
 
-def build_company_artifacts(resolved_rows: list[dict], status_by_period_stream: dict) -> dict[str, dict]:
+def build_company_artifacts(
+    resolved_rows: list[dict],
+    status_by_period_stream: dict,
+    derived_status_by_period: dict,
+) -> dict[str, dict]:
     """{company_name: doc}. Only PUBLISHED (status.value_available) values
-    are ever non-null - never zero as a substitute for unavailable."""
+    are ever non-null - never zero as a substitute for unavailable.
+
+    derived_status_by_period (equity_mboed.build_derived_status_by_period)
+    supplies the period-wide liquids_mboed/natural_gas_mboed/total_mboed
+    status entries (spec section 17) - each company's own derived VALUE is
+    computed here from this company's own included native volumes
+    (by_company_period), never by re-deriving from another company's
+    figures or from the period-wide aggregate."""
     by_company_period: dict[tuple[str, str], dict] = defaultdict(lambda: {s: 0.0 for s in PRODUCTION_STREAMS})
     fields_by_company: dict[str, set] = defaultdict(set)
     for r in resolved_rows:
@@ -315,6 +333,43 @@ def build_company_artifacts(resolved_rows: list[dict], status_by_period_stream: 
                 s = status_by_period_stream[period][stream]
                 value = round3(by_company_period[(company, period)][stream]) if s["value_available"] else None
                 entry[stream] = {"value": value, "status": s["status"], "coverage_pct": s["coverage_pct"]}
+
+            company_totals = by_company_period[(company, period)]
+            derived_status = derived_status_by_period[period]
+
+            liquids_status = derived_status["liquids_mboed"]
+            liquids_value = derive_company_period_value(
+                liquids_status, company_totals["oil_mbd"], company_totals["condensate_mbd"], is_gas=False
+            )
+            entry["liquids_mboed"] = {
+                "value": round_mboed(liquids_value),
+                "status": liquids_status["status"],
+                "coverage_pct": liquids_status["coverage_pct"],
+            }
+
+            gas_status = derived_status["natural_gas_mboed"]
+            gas_value = derive_company_period_value(
+                gas_status, company_totals["dry_gas_mmscfd"], company_totals["assoc_gas_mmscfd"], is_gas=True
+            )
+            entry["natural_gas_mboed"] = {
+                "value": round_mboed(gas_value),
+                "status": gas_status["status"],
+                "coverage_pct": gas_status["coverage_pct"],
+            }
+
+            total_status = derived_status["total_mboed"]
+            # Component-gated (spec section 17/4): the total VALUE is
+            # None iff either component's own derived value is None (i.e.
+            # iff that component was genuinely "unavailable") - a
+            # "not_applicable" component contributes a real 0.0, never
+            # turns the total into a silent None.
+            total_value = None if (liquids_value is None or gas_value is None) else liquids_value + gas_value
+            entry["total_mboed"] = {
+                "value": round_mboed(total_value),
+                "status": total_status["status"],
+                "total_coverage_pct": total_status["total_coverage_pct"],
+            }
+
             series.append(entry)
 
         docs[company] = {
@@ -379,8 +434,12 @@ def build_index(company_docs: dict[str, dict]) -> dict:
             "first_published_period": doc["first_published_period"],
             "last_published_period": doc["last_published_period"],
             "field_count": doc["field_count"],
-            "latest_production": {stream: latest_entry[stream]["value"] for stream in PRODUCTION_STREAMS},
-            "latest_coverage_status": {stream: latest_entry[stream]["status"] for stream in PRODUCTION_STREAMS},
+            "latest_production": {
+                stream: latest_entry[stream]["value"] for stream in list(PRODUCTION_STREAMS) + list(DERIVED_STREAMS)
+            },
+            "latest_coverage_status": {
+                stream: latest_entry[stream]["status"] for stream in list(PRODUCTION_STREAMS) + list(DERIVED_STREAMS)
+            },
         }
     return index
 
@@ -451,6 +510,8 @@ def build_meta(pipeline_result: dict, company_docs: dict, field_docs: dict, buil
         "legal_entity_count": len(company_docs),
         "built_at": build_timestamp,
         "methodology_version": EQUITY_METHODOLOGY_VERSION,
+        "production_conversion_methodology": PRODUCTION_CONVERSION_METHODOLOGY,
+        "gas_scf_per_boe": GAS_SCF_PER_BOE,
         "source_limitations": [
             "Equity coverage before 2013-03 is structurally incomplete in the source workbook and "
             "is not published - see UKCS_DESIGN_v2.md section 15.10/15.11.",
@@ -460,6 +521,10 @@ def build_meta(pipeline_result: dict, company_docs: dict, field_docs: dict, buil
             "not net, entitlement or accounting production.",
             "Internally consistent but incomplete source data may not be independently detectable "
             "by this pipeline's checks - see README.md's known-limitation note.",
+            "liquids_mboed/natural_gas_mboed/total_mboed are ETL-derived analytical measures "
+            "(natural gas converted at 6,000 scf/boe, a conventional energy-equivalence factor, "
+            "not measured calorific value) - NSTA does not publish these directly. See "
+            "methodology.html.",
         ],
         "murlach_unresolved": True,
     }

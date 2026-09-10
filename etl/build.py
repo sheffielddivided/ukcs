@@ -47,9 +47,11 @@ from transform import (  # noqa: E402
     load_unit_classification,
 )
 from validate import (  # noqa: E402
+    DERIVED_MBOED_KEYS,
     ValidationError,
     check_against_previous_build,
     validate_bounding_box,
+    validate_derived_field_month_formula,
     validate_no_negative_aggregated_values,
     validate_no_negative_values,
     validate_operator_conservation,
@@ -67,6 +69,12 @@ from equity_artifacts import (  # noqa: E402
     build_publication_status_by_period_stream,
     run_equity_pipeline,
     write_equity_artifacts,
+)
+from equity_mboed import build_derived_status_by_period  # noqa: E402
+from production_config import (  # noqa: E402
+    CONSERVATION_TOLERANCE_MBOED,
+    GAS_SCF_PER_BOE,
+    PRODUCTION_CONVERSION_METHODOLOGY,
 )
 
 ITEM_ID_POINTS = "dd38204275a04618ab7ddd00f87224e3"
@@ -351,6 +359,30 @@ def main() -> int:
         )
         print("Aggregate-level negative-value check passed (fields, history, operators).")
 
+        # Derived mboe/d formula and conservation checks (spec section 17/6).
+        # Formula check: recompute liquids_mboed/natural_gas_mboed/total_mboed
+        # from each artifact's OWN serialized native fields and confirm they
+        # match (within the small double-rounding tolerance documented in
+        # validate.validate_derived_field_month_formula) - run against
+        # fields.geojson's own properties (built above) and every field's
+        # and operator's full history series.
+        validate_derived_field_month_formula(
+            {f["properties"]["slug"]: [f["properties"]] for f in fields_geojson["features"]}
+        )
+        validate_derived_field_month_formula({slug: doc["series"] for slug, doc in history_per_slug.items()})
+        validate_derived_field_month_formula({slug: doc["series"] for slug, doc in operators_per_slug.items()})
+        # Cross-grain conservation for the derived fields specifically -
+        # same invariant as the native validate_operator_conservation call
+        # above, with a looser, explicitly-documented tolerance
+        # (CONSERVATION_TOLERANCE_MBOED - see production_config.py for why).
+        validate_operator_conservation(
+            {slug: doc["series"] for slug, doc in history_per_slug.items()},
+            {slug: doc["series"] for slug, doc in operators_per_slug.items()},
+            tolerance=CONSERVATION_TOLERANCE_MBOED,
+            keys=DERIVED_MBOED_KEYS,
+        )
+        print("Derived mboe/d formula and field-to-operator conservation checks passed.")
+
         operators_full_text_size = len(
             _json_text({"generated_from": None, "operators": {
                 slug: {**operators_index[slug], "series": operators_per_slug[slug]["series"]}
@@ -387,7 +419,10 @@ def main() -> int:
             history_per_slug, history_index, session, previous_equity_meta=previous_equity_meta
         )
         equity_status_by_period_stream = build_publication_status_by_period_stream(equity_result["monthly_data"])
-        equity_company_docs = build_company_artifacts(equity_result["resolved_rows"], equity_status_by_period_stream)
+        equity_derived_status_by_period = build_derived_status_by_period(equity_result["monthly_data"])
+        equity_company_docs = build_company_artifacts(
+            equity_result["resolved_rows"], equity_status_by_period_stream, equity_derived_status_by_period
+        )
         equity_field_docs = build_field_artifacts(
             equity_result["field_match_index"],
             equity_result["raw_rows_by_equity_field"],
@@ -453,6 +488,9 @@ def main() -> int:
             "operator_count": operator_stats["operator_count"],
             "operators_split": operators_split,
             "schema_hash": schema_hash,
+            "artifact_schema_version": 2,
+            "production_conversion_methodology": PRODUCTION_CONVERSION_METHODOLOGY,
+            "gas_scf_per_boe": GAS_SCF_PER_BOE,
             "notes": notes,
         }
 

@@ -1872,3 +1872,40 @@ implementation sequence, and required tests per workstream.
 
 **Status: discovery and architecture complete for all five workstreams. Nothing in this section is
 approved for implementation.**
+
+### 17.1 Workstream A and B (data model) — approved and implemented (2026-09-10)
+
+Following the discovery above, the following decisions were reviewed and approved, and are now
+implemented in the ETL pipeline (not the frontend, aside from `docs/app/map.js` consuming the new
+published fields to resolve its own pre-existing undocumented constant — see below):
+
+- **Conversion factor**: the industry-convention **6,000 standard cubic feet of gas = 1 boe**
+  (`GAS_SCF_PER_BOE = 6000` in `etl/production_config.py`, the single approved location for this
+  constant anywhere in the repository). Explicitly a conventional energy-equivalence factor for
+  cross-commodity comparability, not a claim about realised energy content, sales specification,
+  entitlement production, revenue equivalence, or measured field-specific calorific value.
+- **Derived measure definitions**: `liquids_mboed = oil_mbd + condensate_mbd`;
+  `natural_gas_mboed = (dry_gas_mmscfd + assoc_gas_mmscfd) / 6`;
+  `total_mboed = liquids_mboed + natural_gas_mboed`. ETL-derived (`etl/mboed.py`), never calculated
+  in JavaScript. Present on `fields.geojson`, `history/{slug}.json`, `operators*.json`, and the
+  equity company/field-month artifacts.
+- **Equity coverage-state combination rule**: production-weighted (never averaged) coverage per
+  component (liquids, natural gas); `total_mboed` availability is component-gated (unavailable if
+  either component is unavailable; warning if both available but either is warning; complete only
+  if both complete); `total_coverage_pct` is retained as diagnostic metadata only and never overrides
+  the gate; a component with genuinely zero total production for a period is `not_applicable`
+  (a known true zero), kept distinct from `unavailable` (unresolved/missing). See `etl/equity_mboed.py`.
+- **Native NSTA-unit fields are retained unchanged** alongside the new derived fields (additive
+  schema only; `artifact_schema_version` bumped to `2`; methodology recorded as
+  `"mboed-v1-6000-scf-per-boe"` in `meta.json`/`equity/meta.json`).
+- **The existing undocumented map-sizing conversion constant is resolved**: `docs/app/map.js`
+  previously computed its own undocumented `GAS_MSCF_PER_BOE = 5.8` for marker sizing only. It now
+  consumes the published, ETL-derived `total_mboed`/`liquids_mboed` fields directly, with no
+  frontend-local conversion math at all — there is exactly one gas-to-boe constant anywhere in the
+  repository, enforced by `tests/test_no_second_gas_conversion.py`.
+- **Publication window and interval-resolution policies are unchanged.**
+
+**Still not approved / not implemented**: company grouping (Workstream C), field-determination
+polygons (Workstream D), licence portfolios (Workstream E), and the new default production-overview
+view. These remain exactly as described in the discovery summary above — proposals pending their own
+separate approval, not implied or unlocked by this section.

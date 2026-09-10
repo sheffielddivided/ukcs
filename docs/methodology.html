@@ -33,6 +33,69 @@
       build timestamp behind the figures currently on the site.
     </p>
 
+    <h2>Derived production measures (mboe/d)</h2>
+    <p>
+      Alongside NSTA's own native-unit fields (oil and condensate in thousand barrels per day,
+      dry and associated gas in million standard cubic feet per day), every field, operator and
+      equity artifact also carries three <strong>derived</strong> measures expressed in thousand
+      barrels of oil equivalent per day (mboe/d): <code>liquids_mboed</code>,
+      <code>natural_gas_mboed</code> and <code>total_mboed</code>. These are calculated entirely by
+      this project's build pipeline &mdash; <strong>NSTA does not publish an mboe/d figure, and
+      nothing on this site should be read as implying it does.</strong> The native NSTA fields are
+      unchanged and remain published alongside the derived ones.
+    </p>
+    <p>
+      The definitions are purely additive:
+    </p>
+    <table>
+      <tr><th>Measure</th><th>Formula</th></tr>
+      <tr><td>Liquids</td><td><code>liquids_mboed = oil_mbd + condensate_mbd</code></td></tr>
+      <tr><td>Natural gas</td><td><code>natural_gas_mboed = (dry_gas_mmscfd + assoc_gas_mmscfd) / 6</code></td></tr>
+      <tr><td>Total production</td><td><code>total_mboed = liquids_mboed + natural_gas_mboed</code></td></tr>
+    </table>
+    <p>
+      Natural gas is converted to barrels of oil equivalent using
+      <strong>6,000 standard cubic feet of gas = 1 boe</strong> (recorded as
+      <code>gas_scf_per_boe</code> in <code>data/meta.json</code> and
+      <code>data/equity/meta.json</code>, alongside a <code>production_conversion_methodology</code>
+      version string). This is a <strong>conventional energy-equivalence factor</strong>, used
+      throughout the oil and gas industry to make gas and liquids volumes comparable on one scale.
+      It is <strong>not</strong> a claim about the realised energy content, sales specification, or
+      calorific value of gas from any specific UKCS field &mdash; actual calorific value varies by
+      field and is not measured or estimated here. Storage volumes are excluded from these derived
+      figures on exactly the same basis they are already excluded from the native production
+      totals (see above); water, injected, flared and vented volumes are never included.
+    </p>
+
+    <h3>Precision and rounding</h3>
+    <p>
+      Derived values are calculated from full-precision native totals wherever those are available
+      in the pipeline, and rounded to 3 decimal places exactly once, at the point each derived value
+      is written to an artifact. Native component values are never rounded and then re-combined; the
+      one exception is where a derived value must be recomputed from an already-published,
+      already-rounded artifact (for example, cross-checking a field-history artifact's own derived
+      figures against its own serialized native fields), which the build's own conservation checks
+      account for with a small, explicit, documented numerical tolerance rather than treating as
+      exact.
+    </p>
+
+    <h3>Coverage and availability (equity artifacts)</h3>
+    <p>
+      For equity-attributable derived measures, coverage is <strong>production-weighted, not
+      averaged</strong>: liquids coverage is the resolved share of total oil-plus-condensate volume
+      for the period; natural-gas coverage is the resolved share of total dry-plus-associated-gas
+      volume for the period. <code>total_mboed</code> availability is <strong>component-gated</strong>:
+      it is unavailable for a period if either the liquids or the natural-gas component is
+      unavailable for that period; it carries a warning if both components are available but either
+      is below the warning coverage threshold; it is shown as complete only when both components are
+      complete. The combined <code>total_coverage_pct</code> figure is diagnostic only &mdash; it is
+      never used to override this component-level gate, so a high blended percentage can never make
+      an unavailable component's contribution to the total appear available. A component whose total
+      reported production for a period is genuinely zero is recorded as <em>not applicable</em> (a
+      known true zero), which is kept distinct from a component that is unresolved or missing data;
+      the total for that period is then driven by the other, producing component alone.
+    </p>
+
     <h2>Equity-attributable production</h2>
     <p class="not-yet">
       Equity-attributable production is calculated by the weekly build (see

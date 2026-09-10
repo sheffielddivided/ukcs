@@ -11,8 +11,13 @@ from __future__ import annotations
 
 import csv
 import re
+import sys
 from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from mboed import derive_mboed, round_mboed  # noqa: E402
 
 # Value fields carried through from PPRS to the field-grain aggregate,
 # mapped to their output key names (spec section 9.2/9.3). Kept in one
@@ -337,10 +342,21 @@ def aggregate_history(
                     value = attrs.get(src_key)
                     if value is not None:
                         totals[out_key] += value
+            # Derived from the still-unrounded per-period totals, before
+            # round3() below is ever applied to them (spec section 17).
+            derived = derive_mboed(
+                totals.get("oil_mbd"),
+                totals.get("condensate_mbd"),
+                totals.get("dry_gas_mmscfd"),
+                totals.get("assoc_gas_mmscfd"),
+            )
             series.append(
                 {
                     "period": period,
                     **{key: round3(val) for key, val in totals.items()},
+                    "liquids_mboed": round_mboed(derived["liquids_mboed"]),
+                    "natural_gas_mboed": round_mboed(derived["natural_gas_mboed"]),
+                    "total_mboed": round_mboed(derived["total_mboed"]),
                 }
             )
         period_count += len(series)
@@ -434,6 +450,15 @@ def build_fields_geojson(records: list[FieldRecord]) -> dict:
     sorted by slug for deterministic output."""
     features = []
     for record in sorted(records, key=lambda r: r.slug):
+        # Derived from the record's still-unrounded totals (never from the
+        # round3()'d values below) - spec section 17: "do not round
+        # component streams before calculating total_mboed".
+        derived = derive_mboed(
+            record.totals.get("oil_mbd"),
+            record.totals.get("condensate_mbd"),
+            record.totals.get("dry_gas_mmscfd"),
+            record.totals.get("assoc_gas_mmscfd"),
+        )
         properties = {
             "slug": record.slug,
             "field": record.field,
@@ -448,6 +473,9 @@ def build_fields_geojson(records: list[FieldRecord]) -> dict:
             "dry_gas_mmscfd": round3(record.totals.get("dry_gas_mmscfd")),
             "condensate_mbd": round3(record.totals.get("condensate_mbd")),
             "water_mbd": round3(record.totals.get("water_mbd")),
+            "liquids_mboed": round_mboed(derived["liquids_mboed"]),
+            "natural_gas_mboed": round_mboed(derived["natural_gas_mboed"]),
+            "total_mboed": round_mboed(derived["total_mboed"]),
         }
         notes = record.totals.get("_notes")
         if notes:
@@ -525,10 +553,31 @@ def aggregate_operators(histories: list[FieldHistory]) -> tuple[list[OperatorHis
                     if value is not None:
                         totals[out_key] += value
 
-        series = [
-            {"period": period, **{k: round3(v) for k, v in by_period[period].items()}}
-            for period in sorted(by_period.keys())
-        ]
+        series = []
+        for period in sorted(by_period.keys()):
+            totals = by_period[period]
+            # Derived from the still-unrounded per-period operator totals
+            # (spec section 17) - these totals are themselves a sum of
+            # already-field-rounded values (the pre-existing precision
+            # characteristic of every native field at operator grain, see
+            # FieldHistory.series above), but the derived formula itself is
+            # applied once, here, to the operator-level aggregate, never by
+            # summing already-rounded per-field derived values.
+            derived = derive_mboed(
+                totals.get("oil_mbd"),
+                totals.get("condensate_mbd"),
+                totals.get("dry_gas_mmscfd"),
+                totals.get("assoc_gas_mmscfd"),
+            )
+            series.append(
+                {
+                    "period": period,
+                    **{k: round3(v) for k, v in totals.items()},
+                    "liquids_mboed": round_mboed(derived["liquids_mboed"]),
+                    "natural_gas_mboed": round_mboed(derived["natural_gas_mboed"]),
+                    "total_mboed": round_mboed(derived["total_mboed"]),
+                }
+            )
 
         operator_histories.append(
             OperatorHistory(
