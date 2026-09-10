@@ -1,14 +1,17 @@
-// Licence portfolio view (Deliverable 2, spec approved 2026-09-10
+// Licence portfolio view (Deliverable 2/3, spec approved 2026-09-10
 // continuation). "Current portfolio" sub-view renders the already-
 // published current subarea-equity-holder polygons
-// (docs/data/licence_portfolio.geojson, etl/licence_portfolio.py) on
-// its OWN isolated MapLibre instance - a completely separate map
-// object, source, and layer set from the Fields map (docs/app/map.js),
-// so switching top-level views never leaks layers, filters, selection
-// or URL state between the two (spec: "map state/legends must be
-// fully isolated from Fields map"). "Historical interests" is a
-// placeholder here - it depends on the historical licence pipeline
-// (Deliverable 3), not yet implemented.
+// (docs/data/licence_portfolio.geojson, etl/licence_portfolio.py).
+// "Historical licence interests and operators" (Deliverable 3) renders
+// docs/data/licence_history.geojson (etl/licence_history.py) - recorded
+// historical licensee/operator NAMES and geometry by date, deliberately
+// NEVER a historical equity percentage (no NSTA source publishes one -
+// see etl/licence_history.py's module docstring). Both sub-views share
+// ONE isolated MapLibre instance (their own source/layer sets, visible
+// one at a time) - a completely separate map object from the Fields map
+// (docs/app/map.js), so switching top-level views never leaks layers,
+// filters, selection or URL state between the two (spec: "map state/
+// legends must be fully isolated from Fields map").
 //
 // No area/hectarage figure is shown anywhere in this view: the source
 // geometry is unprojected WGS84 and no projected-CRS area methodology
@@ -22,7 +25,14 @@ import {
   AttributionControl,
   NavigationControl,
 } from "https://cdn.jsdelivr.net/npm/maplibre-gl@6.8.0/dist/maplibre-gl.mjs";
-import { getLicencePortfolioIndex, getLicencePortfolioGeojson, DataLoadError, fetchJson } from "./state.js";
+import {
+  getLicencePortfolioIndex,
+  getLicencePortfolioGeojson,
+  getLicenceHistoryIndex,
+  getLicenceHistoryGeojson,
+  DataLoadError,
+  fetchJson,
+} from "./state.js";
 import { parseUrlState, updateUrlState } from "./urlstate.js";
 
 const SOURCE_ID = "licence-portfolio";
@@ -30,6 +40,15 @@ const FILL_LAYER_ID = "licence-fill";
 const OUTLINE_LAYER_ID = "licence-outline";
 const LABEL_LAYER_ID = "licence-labels";
 const SELECTED_LAYER_ID = "licence-selected";
+
+const HIST_SOURCE_ID = "licence-history";
+const HIST_FILL_LAYER_ID = "licence-history-fill";
+const HIST_OUTLINE_LAYER_ID = "licence-history-outline";
+const HIST_SELECTED_LAYER_ID = "licence-history-selected";
+
+const NO_HISTORICAL_EQUITY_STATEMENT =
+  "Historical geometry and recorded organisation names are available, but historical subarea " +
+  "equity percentages cannot be reconstructed from the published NSTA source.";
 
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
@@ -40,6 +59,10 @@ let portfolioIndex = null; // {slug: {name, distinct_licence_count, ...}}
 let portfolioGeojson = null;
 let meta = null;
 let selectedFeatureKey = null; // "licref|blockref|subarea"
+
+let historyMeta = null;
+let historyGeojson = null;
+let selectedEpisodeId = null;
 
 function el(html) {
   const div = document.createElement("div");
@@ -65,15 +88,15 @@ export async function initLicenceView(container) {
     <div id="licence-error" class="panel-error" hidden></div>
     <div class="production-tabs" role="tablist" aria-label="Licence portfolio mode">
       <button type="button" role="tab" data-lmode="current" class="tab-btn active">Current portfolio</button>
-      <button type="button" role="tab" data-lmode="historical" class="tab-btn">Historical interests</button>
+      <button type="button" role="tab" data-lmode="historical" class="tab-btn">Historical licence interests and operators</button>
+    </div>
+    <div id="licence-map-wrap">
+      <div id="licence-map"></div>
     </div>
     <div id="licence-current-view">
       <div id="licence-filters" class="production-filters"></div>
       <div id="licence-active-filters" class="production-active-filters" aria-live="polite"></div>
       <div id="licence-summary" class="production-stats"></div>
-      <div id="licence-map-wrap">
-        <div id="licence-map"></div>
-      </div>
       <div class="legend" id="licence-legend">
         <h2>Operated / Non-operated</h2>
         <div class="legend-row"><span class="legend-swatch licence-operated"></span> Operated (OP)</div>
@@ -83,18 +106,27 @@ export async function initLicenceView(container) {
       <div id="licence-detail"></div>
     </div>
     <div id="licence-historical-view" hidden>
-      <div class="panel-loading">
-        Historical licence interests are not yet available in this build. This sub-view will show
-        recorded historical licensee/operator names and geometry by date once the historical licence
-        pipeline is implemented - it will never show historical equity percentages, which cannot be
-        reconstructed from the published NSTA source.
-      </div>
+      <div class="panel-caveat">${escapeHtml(NO_HISTORICAL_EQUITY_STATEMENT)}</div>
+      <div id="licence-history-filters" class="production-filters"></div>
+      <div id="licence-history-active-filters" class="production-active-filters" aria-live="polite"></div>
+      <div id="licence-history-summary" class="production-stats"></div>
+      <div id="licence-history-detail"></div>
     </div>
   `;
 
   for (const btn of root.querySelectorAll('[data-lmode]')) {
     btn.addEventListener("click", () => {
-      updateUrlState({ lmode: btn.dataset.lmode === "current" ? null : btn.dataset.lmode });
+      // lgroup/lstatus/llicence mean something different in each
+      // sub-mode (a group SLUG in Current portfolio vs. a recorded
+      // operator-group NAME in Historical interests) - clearing them on
+      // every sub-mode switch avoids a stale filter from one mode
+      // silently producing an empty result in the other.
+      updateUrlState({
+        lmode: btn.dataset.lmode === "current" ? null : btn.dataset.lmode,
+        lgroup: null,
+        lstatus: null,
+        llicence: null,
+      });
       refreshFromUrl();
     });
   }
@@ -143,24 +175,38 @@ export async function refreshFromUrl() {
   document.getElementById("licence-current-view").hidden = mode !== "current";
   document.getElementById("licence-historical-view").hidden = mode !== "historical";
 
-  if (mode !== "current") return;
-
-  try {
-    if (!portfolioGeojson) {
-      portfolioGeojson = await getLicencePortfolioGeojson();
-    }
-  } catch (err) {
-    showError(err);
-    return;
-  }
-
   await ensureMap();
   if (map) map.resize();
 
-  renderFilterInputs(state);
-  renderActiveFilterChips(state);
-  applyFilters(state);
-  renderSummary(state);
+  if (mode === "current") {
+    setHistoryLayersVisible(false);
+    setCurrentLayersVisible(true);
+    try {
+      if (!portfolioGeojson) portfolioGeojson = await getLicencePortfolioGeojson();
+    } catch (err) {
+      showError(err);
+      return;
+    }
+    renderFilterInputs(state);
+    renderActiveFilterChips(state);
+    applyFilters(state);
+    renderSummary(state);
+  } else {
+    setCurrentLayersVisible(false);
+    setHistoryLayersVisible(true);
+    try {
+      if (!historyMeta) historyMeta = await getLicenceHistoryIndex();
+      if (!historyGeojson) historyGeojson = await getLicenceHistoryGeojson();
+    } catch (err) {
+      showError(err);
+      return;
+    }
+    await ensureHistoryLayers();
+    renderHistoryFilterInputs(state);
+    renderHistoryActiveFilterChips(state);
+    applyHistoryFilters(state);
+    renderHistorySummary(state);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -253,6 +299,63 @@ function ensureMap() {
       resolve();
     });
   });
+}
+
+function setCurrentLayersVisible(visible) {
+  if (!map) return;
+  for (const id of [FILL_LAYER_ID, OUTLINE_LAYER_ID, LABEL_LAYER_ID, SELECTED_LAYER_ID]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
+  }
+}
+
+function setHistoryLayersVisible(visible) {
+  if (!map) return;
+  for (const id of [HIST_FILL_LAYER_ID, HIST_OUTLINE_LAYER_ID, HIST_SELECTED_LAYER_ID]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
+  }
+}
+
+// Added lazily, the first time the Historical sub-view is actually
+// opened - never fetched or rendered just because the Current
+// portfolio sub-view (or the Fields map, or Production) is in use.
+let ensureHistoryLayersPromise = null;
+
+function ensureHistoryLayers() {
+  if (ensureHistoryLayersPromise) return ensureHistoryLayersPromise;
+  ensureHistoryLayersPromise = new Promise((resolve) => {
+    map.addSource(HIST_SOURCE_ID, { type: "geojson", data: historyGeojson });
+    map.addLayer({
+      id: HIST_FILL_LAYER_ID,
+      type: "fill",
+      source: HIST_SOURCE_ID,
+      paint: { "fill-color": "#8855dd", "fill-opacity": 0.35 },
+    });
+    map.addLayer({
+      id: HIST_OUTLINE_LAYER_ID,
+      type: "line",
+      source: HIST_SOURCE_ID,
+      paint: { "line-color": "#4a2f7a", "line-width": 0.75, "line-opacity": 0.7 },
+    });
+    map.addLayer({
+      id: HIST_SELECTED_LAYER_ID,
+      type: "line",
+      source: HIST_SOURCE_ID,
+      filter: ["==", ["get", "episode_id"], -1],
+      paint: { "line-color": "#1d5fd6", "line-width": 3, "line-opacity": 0.95 },
+    });
+    map.on("mouseenter", HIST_FILL_LAYER_ID, () => (map.getCanvas().style.cursor = "pointer"));
+    map.on("mouseleave", HIST_FILL_LAYER_ID, () => (map.getCanvas().style.cursor = ""));
+    map.on("click", HIST_FILL_LAYER_ID, (e) => {
+      const props = e.features[0].properties;
+      selectedEpisodeId = props.episode_id;
+      if (map.getLayer(HIST_SELECTED_LAYER_ID)) {
+        map.setFilter(HIST_SELECTED_LAYER_ID, ["==", ["get", "episode_id"], selectedEpisodeId]);
+      }
+      renderHistoryDetail(props);
+    });
+    resolve();
+  });
+  return ensureHistoryLayersPromise;
 }
 
 function updateSelectedLayerFilter() {
@@ -460,6 +563,185 @@ function renderDetail(props) {
       <div>${props.operated ? "Operated by this group" : "Non-operated"}</div>
       <div>Licence start date: ${escapeHtml(fmtDate(props.licence_start_date))}</div>
       <div>Licence end date: ${escapeHtml(fmtDate(props.licence_end_date))}</div>
+      <div class="panel-caveat">Source: ${attribution}</div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Historical licence interests and operators (Deliverable 3)
+// ---------------------------------------------------------------------------
+
+// Date-containment convention (spec): start_date <= selected_date <
+// end_date; an absent end_date is open-ended and always matches from
+// its start onward. ISO 8601 (YYYY-MM-DD) strings compare correctly
+// with plain string operators, so no date parsing is needed here.
+function episodeContainsDate(entry, dateStr) {
+  if (!entry.start_date || entry.start_date > dateStr) return false;
+  if (entry.end_date && entry.end_date <= dateStr) return false;
+  return true;
+}
+
+function selectedDate(state) {
+  return state.ldate || historyMeta?.latest_start_date || null;
+}
+
+function filteredHistoryFeatures(state) {
+  if (!historyGeojson) return [];
+  const date = selectedDate(state);
+  return historyGeojson.features.filter((f) => {
+    const p = f.properties;
+    if (date && !episodeContainsDate(p, date)) return false;
+    if (state.lgroup && p.operator_group !== state.lgroup) return false;
+    if (state.lstatus && p.licence_status !== state.lstatus) return false;
+    if (state.llicence && p.licence_reference !== state.llicence) return false;
+    return true;
+  });
+}
+
+function buildHistoryMapFilter(state) {
+  const ids = filteredHistoryFeatures(state).map((f) => f.properties.episode_id);
+  return ["in", ["get", "episode_id"], ["literal", ids]];
+}
+
+function applyHistoryFilters(state) {
+  const filter = buildHistoryMapFilter(state);
+  for (const id of [HIST_FILL_LAYER_ID, HIST_OUTLINE_LAYER_ID]) {
+    if (map.getLayer(id)) map.setFilter(id, filter);
+  }
+}
+
+function distinctHistoryStatuses() {
+  return historyMeta?.distinct_licence_statuses || [];
+}
+
+function renderHistoryFilterInputs(state) {
+  const box = document.getElementById("licence-history-filters");
+  const date = selectedDate(state);
+  const operatorGroups = historyMeta?.distinct_operator_groups || [];
+  const statuses = distinctHistoryStatuses();
+
+  box.innerHTML = `
+    <label>Date
+      <input type="date" id="lhf-date" value="${escapeHtml(date || "")}"
+        min="${escapeHtml(historyMeta?.earliest_start_date || "")}"
+        max="${escapeHtml(historyMeta?.latest_start_date || "")}" />
+    </label>
+    <label>Historical operator group
+      <input type="text" id="lhf-operator" list="licence-history-operator-list" value="${escapeHtml(state.lgroup || "")}" placeholder="All operator groups" autocomplete="off" />
+      <datalist id="licence-history-operator-list">
+        ${operatorGroups.map((g) => `<option value="${escapeHtml(g)}"></option>`).join("")}
+      </datalist>
+    </label>
+    <label>Licence status
+      <select id="lhf-status">
+        <option value="" ${!state.lstatus ? "selected" : ""}>All</option>
+        ${statuses.map((s) => `<option value="${escapeHtml(s)}" ${state.lstatus === s ? "selected" : ""}>${escapeHtml(s)}</option>`).join("")}
+      </select>
+    </label>
+    <label>Selected licence
+      <input type="text" id="lhf-licence" list="licence-history-ref-list" value="${escapeHtml(state.llicence || "")}" placeholder="All licences" autocomplete="off" />
+      <datalist id="licence-history-ref-list">
+        ${[...new Set(filteredHistoryFeatures(state).map((f) => f.properties.licence_reference).filter(Boolean))]
+          .sort()
+          .slice(0, 500)
+          .map((r) => `<option value="${escapeHtml(r)}"></option>`)
+          .join("")}
+      </datalist>
+    </label>
+    <button type="button" id="lhf-fit">Fit results</button>
+    <button type="button" id="lhf-clear">Clear filters</button>
+  `;
+
+  document.getElementById("lhf-date").addEventListener("change", (e) => {
+    updateUrlState({ ldate: e.target.value || null });
+    refreshFromUrl();
+  });
+  document.getElementById("lhf-operator").addEventListener("change", (e) => {
+    updateUrlState({ lgroup: e.target.value.trim() || null });
+    refreshFromUrl();
+  });
+  document.getElementById("lhf-status").addEventListener("change", (e) => {
+    updateUrlState({ lstatus: e.target.value || null });
+    refreshFromUrl();
+  });
+  document.getElementById("lhf-licence").addEventListener("change", (e) => {
+    updateUrlState({ llicence: e.target.value.trim() || null });
+    refreshFromUrl();
+  });
+  document.getElementById("lhf-fit").addEventListener("click", () => fitToFilteredHistory(state));
+  document.getElementById("lhf-clear").addEventListener("click", () => {
+    updateUrlState({ ldate: null, lgroup: null, lstatus: null, llicence: null });
+    refreshFromUrl();
+  });
+}
+
+function renderHistoryActiveFilterChips(state) {
+  const box = document.getElementById("licence-history-active-filters");
+  const chips = [`Date: ${selectedDate(state) || "n/a"}`];
+  if (state.lgroup) chips.push(`Operator group: ${state.lgroup}`);
+  if (state.lstatus) chips.push(`Status: ${state.lstatus}`);
+  if (state.llicence) chips.push(`Licence: ${state.llicence}`);
+  box.textContent = `Active filters: ${chips.join(", ")}`;
+}
+
+function fitToFilteredHistory(state) {
+  const features = filteredHistoryFeatures(state);
+  if (features.length === 0) return;
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+  const walk = (coords) => {
+    if (typeof coords[0] === "number") {
+      const [lng, lat] = coords;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    } else {
+      coords.forEach(walk);
+    }
+  };
+  for (const f of features) walk(f.geometry.coordinates);
+  if (minLng === Infinity) return;
+  map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 40, maxZoom: 12 });
+}
+
+function renderHistorySummary(state) {
+  const box = document.getElementById("licence-history-summary");
+  const features = filteredHistoryFeatures(state);
+  if (features.length === 0) {
+    box.innerHTML = `<div class="production-empty">No historical licence interests match the selected date and filters.</div>`;
+    return;
+  }
+  const distinctLicences = new Set(features.map((f) => f.properties.licence_reference).filter(Boolean));
+  const distinctBlocks = new Set(features.map((f) => f.properties.block_reference).filter(Boolean));
+  box.innerHTML = `
+    <ul>
+      <li>Distinct licences active on ${escapeHtml(selectedDate(state) || "n/a")}: ${distinctLicences.size}</li>
+      <li>Distinct blocks: ${distinctBlocks.size}</li>
+      <li>Total recorded episodes shown: ${features.length}</li>
+    </ul>
+  `;
+}
+
+function renderHistoryDetail(props) {
+  const box = document.getElementById("licence-history-detail");
+  const source = historyMeta?.source;
+  const attribution = source
+    ? `${escapeHtml(source.item_title || "")} &mdash; ${escapeHtml(source.publisher || "")}`
+    : "North Sea Transition Authority";
+  box.innerHTML = `
+    <div class="group-detail-panel">
+      <h3>${escapeHtml(props.licence_reference || "")} &mdash; Block ${escapeHtml(props.block_reference || "")}</h3>
+      <div>Licence number: ${escapeHtml(props.licence_number)}</div>
+      <div>Status (as recorded on this episode): ${escapeHtml(props.licence_status)}</div>
+      <div>Effective from: ${escapeHtml(props.start_date)}</div>
+      <div>Effective to: ${escapeHtml(fmtDate(props.end_date))}</div>
+      <div>Recorded licensee name(s): ${escapeHtml(props.licensee_names)}</div>
+      <div>Recorded licensee group: ${escapeHtml(props.licensee_group)}</div>
+      <div>Recorded operator name(s): ${escapeHtml(props.operator_names)}</div>
+      <div>Recorded operator group: ${escapeHtml(props.operator_group)}</div>
+      <div>Recorded administrative organisation: ${escapeHtml(props.admin_org)}</div>
+      <div class="panel-caveat">${escapeHtml(NO_HISTORICAL_EQUITY_STATEMENT)}</div>
       <div class="panel-caveat">Source: ${attribution}</div>
     </div>
   `;

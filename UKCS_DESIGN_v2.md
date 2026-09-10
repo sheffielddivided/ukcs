@@ -2001,4 +2001,75 @@ complete) - each invocation constructed its own MapLibre instance and raced on t
 state. Fixed by memoizing the map-creation promise so concurrent callers always await the same
 in-flight creation.
 
-**Still not implemented**: the Historical licence-interest pipeline and frontend (Deliverable 3).
+**Still not implemented (at the time of section 17.4)**: the Historical licence-interest pipeline
+and frontend. See 17.5 below - now done.
+
+### 17.5 Deliverable 3 — Historical licence-interest pipeline and frontend (2026-09-10) — IMPLEMENTED
+
+**ETL** (`etl/licence_history.py`, wired into `etl/build.py`): uses NSTA's "UKCS offshore
+petroleum licence blocks history (WGS84)" service (item `855237fb38bb44b2afc52a3ea4a48903`,
+resolved at build time, never hardcoded as a URL) — identified in the Phase 3 discovery report
+(5.6, question 2) as the only one of the five licence/block/subarea datasets with real historical
+name/date reconstruction. Live schema inspection (2026-09-10) confirmed `LICORG`/`OPORG`/`ADMORG`
+are populated identically for both current (`HISTORY='N'`) and past (`HISTORY='Y'`) episode rows —
+the separate `LICHISNAME`/`OPHISNAMES`/`ADMHISNAME` fields only ever duplicate them on `HISTORY='Y'`
+rows and are null on `HISTORY='N'` rows — so the pipeline reads `LICORG`/`OPORG`/`ADMORG`
+uniformly rather than branching on `HISTORY`.
+
+Published artifacts (schema version bumped to 6): `docs/data/licence_history.geojson` (one feature
+per historical block-licensing episode — 8,886 rows against the live service on 2026-09-10, each
+carrying a stable `episode_id`, geometry, licence identifiers, status, `start_date`/`end_date`,
+and recorded licensee/operator/admin names and groups) and `docs/data/licence_history_index.json`
+(compact index: date range, distinct operator groups, distinct licence statuses, source
+attribution). Build-breaking validation: schema/geometry-type drift, independent pagination-count
+cross-check (same pattern as every other ArcGIS source in this project), valid dates (every row
+has a start date; an end date, where present, is never before its start date — an absent end date
+is explicitly valid, not a defect), every row retains a non-empty recorded licensee name, and — the
+one required to never regress — no feature property key anywhere references an equity/percentage
+concept, checked by an explicit key-substring scan (`validate_no_fabricated_equity_fields`), not
+just a code comment. Overlapping/concurrent episodes on the same block are never collapsed or
+picked between — every row survives as its own feature.
+
+**Frontend** (`docs/app/licence.js`, extended): "Historical licence interests and operators" is now
+a real sub-view of Licence portfolio (previously a placeholder), sharing the SAME isolated MapLibre
+instance as Current portfolio — its own source and layer set (`licence-history-*` IDs), toggled
+visible only in its own sub-mode, so the two sub-views never bleed into each other. Exact required
+label ("Historical licence interests and operators", not "Historical equity portfolio") and exact
+required limitation statement ("Historical geometry and recorded organisation names are available,
+but historical subarea equity percentages cannot be reconstructed from the published NSTA
+source.") shown prominently. Date selector (native `<input type="date">`, bounded by the index's
+date range, defaulting to the latest known episode start date), searchable historical
+operator-group filter, licence-status filter, searchable selected-licence filter, "Fit results",
+"Clear filters". Date-containment filtering (`start_date <= selected date < end_date`, open end =
+open-ended) runs client-side against the already-published, already-validated GeoJSON — no new
+date logic on the ETL side beyond what's already validated. Selected-episode detail panel shows
+licence number/reference, block, effective dates, recorded licensee/operator/admin names and
+groups, the no-percentage statement again, and source attribution. No animation (static date
+selection only, per spec — an animated date scrubber was explicitly optional and was not built,
+to avoid delaying completion). No area/hectarage figure (same reasoning as Current portfolio).
+Switching between the two Licence portfolio sub-modes clears `lgroup`/`lstatus`/`llicence` from the
+URL, since those keys carry different vocabularies in each sub-mode (a company-group SLUG in
+Current portfolio vs. a recorded operator-group NAME in Historical interests) — a stale value from
+one sub-mode must never silently produce an unexplained empty result in the other.
+
+**Tests**: `tests/test_licence_history.py` (14 ETL unit tests: per-row detail, GeoJSON building
+including the overlapping-episodes-preserved case, meta/index building, and all four validators'
+pass and fail paths) plus `tests/frontend/test_licence_history_frontend.py` (13 Playwright tests
+against a synthetic fixture modelling the real historical-name-reconstruction example from the
+Phase 3 discovery report — GETTY OIL → TEXACO BRITAIN on the same block): exact label text, the
+exact no-percentage statement, default-date containment (including the exact-boundary exclusive-end
+case), an earlier date selecting the correct historical episode, the detail panel's required
+fields with no `%` character anywhere, operator-group filtering (both a match and a non-match),
+clear filters, "Fit results" not erroring, sub-mode-switch filter isolation, no area figure, and
+zero forbidden network requests. A now-obsolete placeholder-specific test from Deliverable 2's
+suite (`test_historical_interests_placeholder_never_claims_equity_percentages`) was replaced with
+a minimal sub-view-exclusivity check, since its placeholder text no longer exists. All 266 ETL
+tests and 92 frontend tests pass. A real local build against the live NSTA service was also run
+end to end (not just against fixtures): 8,886 episodes fetched, 1964-09-18 to 2026-01-31, 200
+distinct operator groups, all validators passed; the resulting `docs/data/` changes were then
+reverted locally, since publishing `docs/data/*` is the scheduled/dispatched Build data workflow's
+job, not something committed directly from a feature branch.
+
+**All three deliverables from the continuation instruction are now implemented**: Production
+overview (17.3), Current licence-portfolio frontend (17.4), Historical licence-interest pipeline
+and frontend (this section).

@@ -1,0 +1,74 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[1.0, 58.0], [1.1, 58.0], [1.1, 58.1], [1.0, 58.0]]]
+      },
+      "properties": {
+        "episode_id": 1,
+        "is_current_episode": false,
+        "licence_number": 335,
+        "licence_reference": "P335",
+        "block_reference": "9/11",
+        "licence_status": "Expired",
+        "start_date": "1980-12-20",
+        "end_date": "1987-01-01",
+        "licensee_names": "GETTY OIL (BRITAIN) LIMITED (01006065)",
+        "licensee_group": "GETTY OIL",
+        "operator_names": "UNOCAL EXPLORATION AND PRODUCTION COMPANY (U.K.) LIMITED",
+        "operator_group": "ALPHA GROUP",
+        "admin_org": "GETTY OIL (BRITAIN) LIMITED (01006065)",
+        "admin_group": "GETTY OIL"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[1.0, 58.0], [1.1, 58.0], [1.1, 58.1], [1.0, 58.0]]]
+      },
+      "properties": {
+        "episode_id": 2,
+        "is_current_episode": false,
+        "licence_number": 335,
+        "licence_reference": "P335",
+        "block_reference": "9/11",
+        "licence_status": "Expired",
+        "start_date": "1987-01-01",
+        "end_date": "2013-11-18",
+        "licensee_names": "TEXACO BRITAIN LIMITED (01006065)",
+        "licensee_group": "TEXACO",
+        "operator_names": "UNOCAL UK LIMITED",
+        "operator_group": "BETA GROUP",
+        "admin_org": "TEXACO BRITAIN LIMITED (01006065)",
+        "admin_group": "TEXACO"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[2.0, 58.0], [2.1, 58.0], [2.1, 58.1], [2.0, 58.0]]]
+      },
+      "properties": {
+        "episode_id": 3,
+        "is_current_episode": true,
+        "licence_number": 920,
+        "licence_reference": "P920",
+        "block_reference": "3/27b",
+        "licence_status": "Extant",
+        "start_date": "2013-11-18",
+        "end_date": null,
+        "licensee_names": "ENQUEST HEATHER LIMITED (02748866)",
+        "licensee_group": "ENQUEST PLC",
+        "operator_names": "ENQUEST HEATHER LIMITED (02748866)",
+        "operator_group": "ALPHA GROUP",
+        "admin_org": "ENQUEST HEATHER LIMITED (02748866)",
+        "admin_group": "ENQUEST PLC"
+      }
+    }
+  ]
+}

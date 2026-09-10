@@ -1,0 +1,14 @@
+{
+  "record_count": 4,
+  "earliest_start_date": "1980-12-20",
+  "latest_start_date": "2013-11-18",
+  "latest_end_date": "2020-12-31",
+  "open_ended_count": 1,
+  "distinct_operator_groups": ["ALPHA GROUP", "BETA GROUP"],
+  "distinct_licence_statuses": ["Expired", "Extant"],
+  "source": {
+    "item_title": "UKCS offshore petroleum licence blocks history (WGS84)",
+    "publisher": "North Sea Transition Authority",
+    "resolved_url": "https://example.invalid/blocks-history"
+  }
+}

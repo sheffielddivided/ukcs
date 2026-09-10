@@ -103,6 +103,16 @@ from licence_portfolio import (  # noqa: E402
     build_portfolio_geojson,
     fetch_licence_subarea_rows,
 )
+from licence_history import (  # noqa: E402
+    LICENCE_BLOCKS_HISTORY_ITEM_ID,
+    LicenceHistoryError,
+    build_history_geojson,
+    build_history_meta,
+    fetch_licence_history_rows,
+    validate_history_dates,
+    validate_no_fabricated_equity_fields,
+    validate_source_names_retained,
+)
 from overview import (  # noqa: E402
     OverviewError,
     build_company_groups_overview,
@@ -489,6 +499,30 @@ def main() -> int:
             f"{len(licence_portfolio_by_group)} distinct current display groups"
         )
 
+        # --- Historical licence interests (Deliverable 3, spec approved
+        # 2026-09-10 continuation): NSTA's blocks-history service - the
+        # only one of the five licence/block/subarea datasets with real
+        # historical name/date reconstruction (Phase 3 discovery report
+        # 5.6). Never carries an equity percentage - validated explicitly
+        # below, not just documented.
+        licence_history_result = fetch_licence_history_rows(session)
+        validate_history_dates(licence_history_result["rows"])
+        validate_source_names_retained(licence_history_result["rows"])
+        licence_history_geojson = build_history_geojson(licence_history_result["rows"])
+        validate_no_fabricated_equity_fields(licence_history_geojson)
+        licence_history_meta = build_history_meta(
+            licence_history_result["rows"],
+            licence_history_result["resolved_url"],
+            licence_history_result["item_title"],
+            licence_history_result["record_count"],
+        )
+        print(
+            f"Historical licence interests: {licence_history_result['record_count']} historical "
+            f"block-licensing episodes, {licence_history_meta['earliest_start_date']} to "
+            f"{licence_history_meta['latest_start_date']}, "
+            f"{len(licence_history_meta['distinct_operator_groups'])} distinct operator groups"
+        )
+
         operators_full_text_size = len(
             _json_text({"generated_from": None, "operators": {
                 slug: {**operators_index[slug], "series": operators_per_slug[slug]["series"]}
@@ -693,6 +727,13 @@ def main() -> int:
                     "record_count": licence_subarea_result.get("record_count"),
                     "distinct_current_display_groups": len(licence_portfolio_by_group),
                 },
+                "licence_history": {
+                    "publisher": PUBLISHER,
+                    "item_title": licence_history_result.get("item_title"),
+                    "item_id": LICENCE_BLOCKS_HISTORY_ITEM_ID,
+                    "resolved_url": licence_history_result.get("resolved_url"),
+                    "record_count": licence_history_result.get("record_count"),
+                },
             },
             "latest_period": latest_period,
             "earliest_period": earliest_period,
@@ -709,19 +750,20 @@ def main() -> int:
             "operator_count": operator_stats["operator_count"],
             "operators_split": operators_split,
             "schema_hash": schema_hash,
-            # Bumped to 5: adds docs/data/overview/* (Deliverable 1,
-            # production overview compact artifacts), on top of 4's
-            # licence_portfolio.geojson/index/groups (Workstream 4), 3's
-            # field_polygons.geojson and docs/data/equity/groups/*
-            # (Workstreams 1 and 3) - all purely additive, no existing
-            # field renamed or removed.
-            "artifact_schema_version": 5,
+            # Bumped to 6: adds docs/data/licence_history.geojson and
+            # licence_history_meta.json (Deliverable 3, historical
+            # licence-interest pipeline), on top of 5's docs/data/overview/*
+            # (Deliverable 1), 4's licence_portfolio.geojson/index/groups
+            # (Workstream 4), 3's field_polygons.geojson and
+            # docs/data/equity/groups/* (Workstreams 1 and 3) - all purely
+            # additive, no existing field renamed or removed.
+            "artifact_schema_version": 6,
             "production_conversion_methodology": PRODUCTION_CONVERSION_METHODOLOGY,
             "gas_scf_per_boe": GAS_SCF_PER_BOE,
             "notes": notes,
         }
 
-    except (ArcGISError, ValidationError, BuildError, EquityBuildError, CompanyGroupsError, FieldPolygonsError, LicencePortfolioError, OverviewError, ValueError) as e:
+    except (ArcGISError, ValidationError, BuildError, EquityBuildError, CompanyGroupsError, FieldPolygonsError, LicencePortfolioError, LicenceHistoryError, OverviewError, ValueError) as e:
         print(f"\nBUILD FAILED: {e}", file=sys.stderr)
         return 1
 
@@ -749,6 +791,8 @@ def main() -> int:
         DOCS_DATA_DIR / "licence_portfolio_groups",
         {group["slug"]: group for group in licence_portfolio_by_group.values()},
     )
+    write_json_atomic(DOCS_DATA_DIR / "licence_history.geojson", licence_history_geojson)
+    write_json_atomic(DOCS_DATA_DIR / "licence_history_index.json", licence_history_meta)
     # Production overview compact artifacts (Deliverable 1) - one atomic
     # staging/rename per the same pattern as licence_portfolio_groups
     # above, so a partial overview publish can never happen.

@@ -290,6 +290,28 @@
       cannot be reconstructed from the published NSTA source.
     </p>
 
+    <h2>Historical licence interests and operators</h2>
+    <p>
+      The Licence portfolio view's "Historical licence interests and operators" sub-view uses
+      NSTA's "UKCS offshore petroleum licence blocks history (WGS84)" dataset &mdash; the only one
+      of the five licence/block/subarea datasets NSTA publishes with real historical name and date
+      reconstruction (<code>BLCKSTRTDT</code>/<code>BLCKENDDT</code> and the licensee/operator
+      names recorded for each historical licensing episode on a block). Selecting a date shows
+      every recorded episode whose interval contains it (<code>start_date &le; selected date &lt;
+      end_date</code>; an open end date means the episode is still current). Overlapping or
+      concurrent episodes on the same block are never collapsed or resolved to a single "winner" -
+      all are shown.
+    </p>
+    <p>
+      <strong>This sub-view never shows a historical equity percentage.</strong> No NSTA source
+      publishes one: the only dataset with a real, numeric equity split
+      (subareas-by-equity-group-holder, used by the Current portfolio sub-view) is a
+      current-state-only snapshot with no historical variant or effective-date range on the split
+      itself. This is a hard limitation of the published source data, not a gap in this project's
+      pipeline, and the sub-view states this prominently rather than approximating or omitting the
+      caveat.
+    </p>
+
     <h2>Known limitation, both datasets</h2>
     <p>
       Every check in this project's build is an internal-consistency check against the data it

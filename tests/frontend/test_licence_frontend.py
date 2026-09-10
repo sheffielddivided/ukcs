@@ -54,16 +54,18 @@ def test_current_portfolio_is_the_default_sub_view(load_app):
     assert "active" in page.locator('[data-lmode="current"]').get_attribute("class")
 
 
-def test_historical_interests_placeholder_never_claims_equity_percentages(load_app):
+def test_switching_to_historical_sub_view_hides_current_portfolio(load_app):
+    """The Historical interests sub-view is now implemented (Deliverable
+    3) - see tests/frontend/test_licence_history_frontend.py for its own
+    dedicated, thorough test suite (labelling, no-equity-percentage
+    statement, date filtering, detail panel, etc). This test only
+    confirms the two sub-views stay mutually exclusive."""
     page = load_app("top=licence")
     _open_licence_view(page)
     page.click('[data-lmode="historical"]')
     page.wait_for_timeout(200)
     assert page.locator("#licence-historical-view").is_visible()
     assert page.locator("#licence-current-view").is_hidden()
-    text = " ".join(page.locator("#licence-historical-view").text_content().split())
-    assert "not yet available" in text
-    assert "cannot be reconstructed" in text
 
 
 def test_map_layers_are_created_with_operated_colour_and_text_label(load_app):
