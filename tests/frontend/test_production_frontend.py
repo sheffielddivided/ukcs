@@ -11,6 +11,8 @@
 # all, but main.js still initialises the map underneath regardless of
 # which top-level view is shown, so the same stub is required.
 
+import json
+
 import pytest
 
 from test_equity_frontend import assert_no_forbidden_requests
@@ -248,6 +250,142 @@ def test_single_legal_entity_selection_has_no_by_field_option(load_app):
     option = page.evaluate("() => window.__echartsCharts['production-chart']")
     names = {s["name"] for s in option["series"]}
     assert names == {"Liquids", "Natural gas"}
+
+
+def test_single_company_field_breakdown_caps_to_top_6_plus_other(load_app, page):
+    """Regression test (2026-09-10 continuation): a company with more
+    than 6 fields must show only its 6 largest (by latest total_mboed),
+    the rest folded into one "Other fields" bar - defined the same
+    subtractive way (company total minus displayed top 6) as the
+    UKCS-wide By field split's own "Other fields", so it reconciles
+    exactly regardless of how many fields are excluded."""
+
+    def _flat_field_doc(name, value):
+        return {
+            "slug": name.lower().replace(" ", "-"),
+            "name": name,
+            "series": [
+                {
+                    "period": p,
+                    "liquids_mboed": {"value": round(value * 0.6, 3), "status": "complete"},
+                    "natural_gas_mboed": {"value": round(value * 0.4, 3), "status": "complete"},
+                    "total_mboed": {"value": value, "status": "complete"},
+                }
+                for p in ["202401", "202402", "202403"]
+            ],
+        }
+
+    breakdown = {
+        "Alpha Group": {
+            name: _flat_field_doc(name, v)
+            for name, v in [
+                ("ALPHA FIELD", 2.5), ("BETA FIELD", 1.8), ("DELTA FIELD", 1.2),
+                ("EPSILON FIELD", 0.8), ("ZETA FIELD", 0.4), ("ETA FIELD", 0.3),
+                ("THETA FIELD", 0.2), ("IOTA FIELD", 0.1),
+            ]
+        }
+    }
+    page.route(
+        "**/data/overview/company_groups_field_breakdown.json",
+        lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(breakdown)),
+    )
+
+    load_app("")
+    page.wait_for_selector("#production-stats details")
+    page.click('button[data-split="company"]')
+    page.wait_for_timeout(200)
+    page.select_option("#pf-company", "Alpha Group")
+    page.wait_for_timeout(400)
+
+    option = page.evaluate("() => window.__echartsCharts['production-chart']")
+    series_by_name = {s["name"]: s["data"] for s in option["series"]}
+    assert set(series_by_name) == {
+        "ALPHA FIELD", "BETA FIELD", "DELTA FIELD", "EPSILON FIELD", "ZETA FIELD", "ETA FIELD", "Other fields",
+    }
+    assert "THETA FIELD" not in series_by_name
+    assert "IOTA FIELD" not in series_by_name
+    # Other fields = Alpha Group's own published total_mboed (8.0/8.5/9.5)
+    # minus the top-6 sum (7.0 every period: 2.5+1.8+1.2+0.8+0.4+0.3),
+    # annual-averaged: (1.0+1.5+2.5)/3.
+    assert series_by_name["Other fields"][0] == pytest.approx(1.667, abs=0.001)
+    assert "top 6 shown, rest grouped as Other" in page.locator("#production-summary").text_content()
+    assert_no_forbidden_requests(page)
+
+
+def test_multiple_companies_capped_to_top_6_plus_other_companies(load_app, page):
+    """Regression test (2026-09-10 continuation): showing every company
+    (no single selection) must cap the chart to the 6 largest by latest
+    total_mboed, folding the rest into one "Other companies" bar - a
+    DIRECT sum of the excluded companies' own totals (there is no
+    independent grand total at this grain to reconcile subtractively
+    against, unlike the field-breakdown case)."""
+
+    def _flat_group_doc(value, member):
+        return {
+            "member_entities": [member],
+            "is_singleton": True,
+            "series": [
+                {
+                    "period": p,
+                    "liquids_mboed": {"value": round(value * 0.6, 3), "status": "complete"},
+                    "natural_gas_mboed": {"value": round(value * 0.4, 3), "status": "complete"},
+                    "total_mboed": {"value": value, "status": "complete"},
+                }
+                for p in ["202401", "202402", "202403"]
+            ],
+        }
+
+    groups = {
+        "Alpha Group": {
+            "member_entities": ["Alpha Co A", "Alpha Co B"],
+            "is_singleton": False,
+            "series": [
+                {"period": "202401", "liquids_mboed": {"value": 5.0, "status": "complete"}, "natural_gas_mboed": {"value": 3.0, "status": "complete"}, "total_mboed": {"value": 8.0, "status": "complete"}},
+                {"period": "202402", "liquids_mboed": {"value": 5.5, "status": "complete"}, "natural_gas_mboed": {"value": 3.0, "status": "complete"}, "total_mboed": {"value": 8.5, "status": "complete"}},
+                {"period": "202403", "liquids_mboed": {"value": 6.0, "status": "complete"}, "natural_gas_mboed": {"value": 3.5, "status": "complete"}, "total_mboed": {"value": 9.5, "status": "complete"}},
+            ],
+        },
+        "Unresolved legal entities": {
+            "member_entities": ["Gamma Co"],
+            "is_singleton": False,
+            "series": [
+                {"period": "202401", "liquids_mboed": {"value": 1.0, "status": "complete"}, "natural_gas_mboed": {"value": 0.5, "status": "complete"}, "total_mboed": {"value": 1.5, "status": "complete"}},
+                {"period": "202402", "liquids_mboed": {"value": 1.0, "status": "complete"}, "natural_gas_mboed": {"value": 0.5, "status": "complete"}, "total_mboed": {"value": 1.5, "status": "complete"}},
+                {"period": "202403", "liquids_mboed": {"value": 1.2, "status": "complete"}, "natural_gas_mboed": {"value": 0.6, "status": "complete"}, "total_mboed": {"value": 1.8, "status": "complete"}},
+            ],
+        },
+        "NewCo1 Group": _flat_group_doc(7.0, "NewCo1 Co"),
+        "NewCo2 Group": _flat_group_doc(6.0, "NewCo2 Co"),
+        "NewCo3 Group": _flat_group_doc(5.0, "NewCo3 Co"),
+        "NewCo4 Group": _flat_group_doc(4.0, "NewCo4 Co"),
+        "NewCo5 Group": _flat_group_doc(3.0, "NewCo5 Co"),
+        "NewCo6 Group": _flat_group_doc(2.0, "NewCo6 Co"),
+    }
+    page.route(
+        "**/data/overview/company_groups.json",
+        lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(groups)),
+    )
+
+    load_app("")
+    page.wait_for_selector("#production-stats details")
+    page.click('button[data-split="company"]')
+    page.wait_for_timeout(300)
+
+    assert page.locator("#production-category-toggle").is_hidden()
+    option = page.evaluate("() => window.__echartsCharts['production-chart']")
+    series_by_name = {s["name"]: s["data"] for s in option["series"]}
+    assert set(series_by_name) == {
+        "Alpha Group", "NewCo1 Group", "NewCo2 Group", "NewCo3 Group", "NewCo4 Group", "NewCo5 Group",
+        "Other companies",
+    }
+    assert "NewCo6 Group" not in series_by_name
+    assert "Unresolved legal entities" not in series_by_name
+    # Other companies = NewCo6 Group (2.0 every period) + Unresolved
+    # legal entities (1.5/1.5/1.8), summed per month then annual-averaged:
+    # ((2.0+1.5)+(2.0+1.5)+(2.0+1.8)) / 3 = 3.6.
+    assert series_by_name["Other companies"][0] == pytest.approx(3.6, abs=0.001)
+    assert "top 6 of 8 shown" in page.locator("#production-summary").text_content()
+    assert_no_forbidden_requests(page)
 
 
 def test_field_split_top_n_plus_other_reconciles_to_ukcs_total(load_app):

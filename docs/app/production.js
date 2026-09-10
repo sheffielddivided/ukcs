@@ -25,6 +25,25 @@ const COLORS = [
   "#3fa7d6", "#c9862a", "#5ec98f", "#9d6bd6", "#d65454", "#4a9ed6",
 ];
 
+// Applies to both "By company" (all companies shown) and a single
+// company's own "By field" breakdown (spec 2026-09-10 continuation:
+// "show only the 6 largest ... group the rest as Other") - fixed, not
+// user-selectable like the UKCS-wide By field split's own Top N
+// control, since neither of these was asked to grow that control.
+const TOP_N_DEFAULT = 6;
+
+// Ranks {name, series} entries by latest-available total_mboed value
+// (same defensible "rank by latest known figure, not cumulative
+// history" choice the UKCS-wide By field split already uses), splitting
+// into the top N and the rest.
+function rankByLatestTotal(entries, topN) {
+  const ranked = entries
+    .map((e) => ({ entry: e, latest: [...e.series].reverse().find((p) => p.total_mboed?.value != null) }))
+    .filter((e) => e.latest)
+    .sort((a, b) => (b.latest.total_mboed.value || 0) - (a.latest.total_mboed.value || 0));
+  return { top: ranked.slice(0, topN).map((r) => r.entry), rest: ranked.slice(topN).map((r) => r.entry) };
+}
+
 let root = null;
 let meta = null;
 let monthlyTotals = null;
@@ -360,10 +379,12 @@ function commodityCategorySeries(companyDoc, periods) {
   ];
 }
 
-async function fieldCategorySeries(groupName, periods) {
+async function fieldCategorySeries(groupName, companyDoc, periods) {
   const breakdown = await getOverviewArtifact("company_groups_field_breakdown");
   const groupFields = breakdown[groupName] || {};
-  return Object.values(groupFields).map((fieldDoc, i) => {
+  const { top, rest } = rankByLatestTotal(Object.values(groupFields), TOP_N_DEFAULT);
+
+  const series = top.map((fieldDoc, i) => {
     const byPeriod = new Map(fieldDoc.series.map((p) => [p.period, p]));
     return {
       name: fieldDoc.name,
@@ -371,6 +392,28 @@ async function fieldCategorySeries(groupName, periods) {
       data: periods.map((p) => byPeriod.get(p)?.total_mboed?.value ?? null),
     };
   });
+
+  if (rest.length > 0) {
+    // Other fields = this company's own published total_mboed minus the
+    // sum of the displayed (top N) fields - the same subtractive
+    // definition (never a direct sum of the excluded fields) the
+    // UKCS-wide By field split's own "Other fields" uses, so it
+    // reconciles exactly with this company's own total by construction
+    // (etl/overview.py's build-breaking company<->field reconciliation
+    // check already guarantees summing ALL of a company's fields
+    // reproduces its total exactly).
+    const companyByPeriod = new Map(companyDoc.series.map((p) => [p.period, p]));
+    const otherData = periods.map((period, idx) => {
+      const total = companyByPeriod.get(period)?.total_mboed?.value;
+      if (total == null) return null;
+      let sumDisplayed = 0;
+      for (const s of series) sumDisplayed += s.data[idx] || 0;
+      return Math.max(0, +(total - sumDisplayed).toFixed(3));
+    });
+    series.push({ name: "Other fields", color: "#b8b8b8", data: otherData });
+  }
+
+  return series;
 }
 
 function topNHtml(state) {
@@ -505,6 +548,7 @@ async function renderCompanySplit(state) {
   const singleSelection = names.length === 1;
   let monthlyStacked;
   let categoryLabel = "";
+  let cappedNote = "";
 
   if (singleSelection) {
     // One company left nothing to stack company-vs-company against, so
@@ -514,25 +558,52 @@ async function renderCompanySplit(state) {
     renderCategoryToggle(state, fieldBreakdownAvailable);
     const cat = fieldBreakdownAvailable && state.pcat === "commodity" ? "commodity" : fieldBreakdownAvailable ? "field" : "commodity";
     if (cat === "field") {
-      monthlyStacked = await fieldCategorySeries(names[0], periods);
-      categoryLabel = ", by field";
+      monthlyStacked = await fieldCategorySeries(names[0], data[names[0]], periods);
+      const fieldCount = monthlyStacked.length - (monthlyStacked.some((s) => s.name === "Other fields") ? 1 : 0);
+      categoryLabel = monthlyStacked.some((s) => s.name === "Other fields")
+        ? `, by field (top ${fieldCount} shown, rest grouped as Other)`
+        : ", by field";
     } else {
       monthlyStacked = commodityCategorySeries(data[names[0]], periods);
       categoryLabel = ", oil vs gas";
     }
   } else {
     document.getElementById("production-category-toggle").hidden = true;
-    monthlyStacked = names.map((name, i) => {
-      const byPeriod = new Map(data[name].series.map((p) => [p.period, p]));
+    // Top N companies by latest total_mboed, the rest grouped into one
+    // "Other" bar (spec 2026-09-10 continuation) - the same treatment
+    // as the UKCS-wide By field split's own Top N + Other, applied here
+    // since a full company list (e.g. every approved group) is just as
+    // unreadable stacked as every field would be. "Other" is a DIRECT
+    // sum of the excluded companies' own totals (not subtractive from
+    // an independent grand total - there isn't one at this grain, the
+    // stacked bars ARE the total), so it is exactly self-consistent by
+    // construction regardless of each company's own null/coverage
+    // pattern.
+    const namedEntries = names.map((name) => ({ name, series: data[name].series }));
+    const { top, rest } = rankByLatestTotal(namedEntries, TOP_N_DEFAULT);
+
+    monthlyStacked = top.map((entry, i) => {
+      const byPeriod = new Map(entry.series.map((p) => [p.period, p]));
       return {
-        name,
+        name: entry.name,
         color: COLORS[i % COLORS.length],
-        data: periods.map((period) => {
-          const point = byPeriod.get(period);
-          return point ? point.total_mboed.value : null;
-        }),
+        data: periods.map((period) => byPeriod.get(period)?.total_mboed?.value ?? null),
       };
     });
+
+    if (rest.length > 0) {
+      const restByPeriod = rest.map((entry) => new Map(entry.series.map((p) => [p.period, p])));
+      const otherData = periods.map((period) => {
+        let sum = null;
+        for (const byPeriod of restByPeriod) {
+          const v = byPeriod.get(period)?.total_mboed?.value;
+          if (v != null) sum = (sum || 0) + v;
+        }
+        return sum;
+      });
+      monthlyStacked.push({ name: "Other companies", color: "#b8b8b8", data: otherData });
+      cappedNote = ` (top ${top.length} of ${top.length + rest.length} shown, rest grouped as Other)`;
+    }
   }
 
   const annual = state.pfreq !== "monthly";
@@ -551,7 +622,7 @@ async function renderCompanySplit(state) {
   const unitLabel = annual ? `${displayPeriods.length} year(s) (annual average)` : `${periods.length} months`;
   document.getElementById("production-summary").textContent = singleSelection
     ? `${names[0]} shown over ${unitLabel}${categoryLabel}.`
-    : `${names.length} ${grain === "group" ? "company group(s)" : "legal entit(ies)"} shown over ${unitLabel}.`;
+    : `${names.length} ${grain === "group" ? "company group(s)" : "legal entit(ies)"} shown over ${unitLabel}${cappedNote}.`;
 
   if (state.pgroup && grain === "group") {
     renderGroupDetail(state.pgroup, data[state.pgroup]);
