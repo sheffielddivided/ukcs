@@ -2365,3 +2365,75 @@ Tested in `tests/frontend/test_production_frontend.py`
 `test_other_footnote_collapses_behind_details_when_the_list_is_long`, and extended assertions on
 the existing `test_single_company_field_breakdown_caps_to_top_10_plus_other`/
 `test_multiple_companies_capped_to_top_10_plus_other_companies`).
+
+### 17.13 UI facelift — design tokens, validated palette, responsive layout (2026-09-11) — IMPLEMENTED
+
+Requested: "I think the user interface needs a facelift. It is now very generic and not very
+visually appealing. It should also be better adapted for mobile screens." Presentation only — no
+data artifact, no ETL, and no change to what any chart or table reports.
+
+**Design tokens (`docs/styles.css`).** A single `:root` block is now the only place a colour,
+radius, or shadow is written; every rule and every chart reads from it. The set is deliberately
+small: four surfaces (`--page-plane`, `--surface`, `--surface-raised`, `--surface-sunken`), three
+ink steps (`--text-primary/-secondary/-muted`), two borders, a grid/axis pair for charts, an
+accent pair (`--accent` / `--accent-contrast`) used for the active state of every control, a
+focus ring, the two commodity colours, and ten categorical series slots plus `--series-other`.
+Dark mode redefines the same names under
+`@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { … } }`, so it stays a
+*selected* theme (its own steps, validated against its own surface) rather than an automatic
+inversion. Base type moved to 15px/1.5.
+
+**Categorical palette — re-derived, not inherited.** The pre-existing 10-colour array was fed to
+the dataviz skill's validator and **failed**: 5 of 10 sat outside the dark-mode lightness band,
+and the sequence cycled into a second blue (`#3fa7d6` next to `#2a78d6`) that a reader cannot
+separate from the first. Both modes were re-stepped until every gate passed:
+
+| Mode | Surface | Lightness band | Chroma floor | Worst adjacent CVD ΔE | Worst adjacent normal ΔE | Contrast |
+|---|---|---|---|---|---|---|
+| light | `#fcfcfb` | all 10 in 0.43–0.77 | all ≥ 0.1 | **9.1** (`#eda100↔#1baf7a`, protan) | **19.6** | 3 slots below 3:1 → WARN |
+| dark | `#141413` | all 10 in 0.48–0.67 | all ≥ 0.1 | **8.4** (`#c98500↔#199e70`, protan) | **19.3** | all ≥ 3:1 |
+
+The light-mode contrast WARN is discharged, not dismissed: every chart with ≥2 series carries a
+legend, and the underlying numbers are always reachable as text (the stats/group-detail blocks
+below each chart), so identity is never colour-alone.
+
+The **map** keeps its light-mode hexes in both themes on purpose. Its surface is OSM raster
+imagery, not the page surface, so the page's dark steps would be validated against the wrong
+background.
+
+**Chart theming (`docs/app/charts.js`).** A `chartTheme()` helper reads the CSS custom properties
+at render time via `getComputedStyle(document.documentElement)`, so the tokens stay the single
+source of truth and the charts cannot drift from the page. Shared `axisDefaults()`,
+`tooltipDefaults()`, `legendDefaults()` and a `stackedBar()` factory replace the per-chart option
+literals. Marks follow the skill's specs: hairline solid gridlines one step off the surface, no
+axis ticks, muted 11px labels, `barMaxWidth: 24`, a 1px gap drawn *in the surface colour* between
+stacked segments, and the reconciling Total line in ink (`--text-primary`) so it reads as the
+envelope rather than an eleventh category.
+
+That surface-colour gap is turned off for dense runs (`DENSE_CATEGORY_COUNT = 36`, i.e. the full
+1975–2026 monthly/annual history). ECharts borders a bar on all four sides; at a few pixels per
+column a 1px border per side eats most of the bar and the run reads as hairline stripes instead
+of a mass. Dense runs are already separated by the category gap.
+
+`docs/app/production.js` no longer owns a colour array — it calls `seriesPalette()` and asks the
+tokens for the "Other" grey and the Total ink.
+
+**Layout.** Header/nav/tabs became segmented controls with an ink active state. In the Production
+view the mode toolbar and the filter row are now one card (`.production-controls +
+.production-filters` drops the shared border and rounds only the bottom), with the chart in its
+own card below and `#production-stats` moved *below* the chart rather than above it — the chart is
+what the reader came for. The sidebar's legend prose is collapsed behind two `<details>`
+disclosures. `docs/methodology.html` got a 44rem reading column with real heading/table/code
+styling.
+
+**Mobile.** The core fix is at `max-width: 860px`, where `#layout` becomes a column and
+`#map-container` is pulled to `order: -1` at `58vh`. Previously the desktop flex row survived on a
+phone, leaving the map a ~50px sliver beside a 260px sidebar — the Fields map view was effectively
+unusable. The field panel becomes a bottom sheet (`position: fixed; inset: auto 0 0 0`, 82vh cap,
+rounded top, grab handle, shadow), and wide tables get `display: block; overflow-x: auto`. A
+second breakpoint at 540px takes tap targets to 38–40px and inputs to 16px (below that iOS zooms
+the page on focus). `prefers-reduced-motion: reduce` disables all transitions.
+
+One accepted edge case: charts pick up the theme at render time, so switching OS theme with a
+chart already on screen leaves that chart on the old palette until the next render. A live
+`matchMedia` listener was judged not worth the re-render churn.

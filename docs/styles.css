@@ -1,17 +1,60 @@
+/* Design tokens.
+   Palette note: the data colours here are a validated categorical set, not
+   picked by eye - the ten series slots clear the lightness band, chroma
+   floor, adjacent-pair CVD separation (worst ΔE 9.1 light / 8.4 dark) and
+   normal-vision floor (19.2 / 19.3) against each mode's own surface. Dark
+   is a SELECTED set of steps for the dark surface, never an automatic flip
+   of the light one. UI chrome deliberately uses ink (--accent), never a
+   data hue, so an active tab can never be mistaken for a "gas" mark. */
 :root {
   color-scheme: light;
   --page-plane: #f9f9f7;
   --surface: #fcfcfb;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f2f1ed;
   --text-primary: #0b0b0b;
   --text-secondary: #52514e;
   --text-muted: #898781;
   --border: rgba(11, 11, 11, 0.1);
+  --border-strong: rgba(11, 11, 11, 0.18);
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+
+  /* Chrome accent: ink, so it never collides with a data colour. */
+  --accent: #0b0b0b;
+  --accent-contrast: #fcfcfb;
+  --focus: #2a78d6;
+
   --color-oil: #eb6834;
   --color-gas: #2a78d6;
   --color-none: #898781;
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
+  --series-9: #009aa8;
+  --series-10: #9c5f1f;
+  --series-other: #c3c2b7;
+
+  --ok: #0ca30c;
+  --warn: #fab219;
   --error-bg: #fdecea;
   --error-border: #d03b3b;
   --error-text: #7a1f1f;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(11, 11, 11, 0.06);
+  --shadow-md: 0 6px 20px -6px rgba(11, 11, 11, 0.18), 0 2px 6px rgba(11, 11, 11, 0.06);
+  --shadow-lg: 0 -8px 32px -8px rgba(11, 11, 11, 0.28);
+
+  --header-h: auto;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,16 +62,43 @@
     color-scheme: dark;
     --page-plane: #0d0d0d;
     --surface: #1a1a19;
+    --surface-raised: #222221;
+    --surface-sunken: #131312;
     --text-primary: #ffffff;
     --text-secondary: #c3c2b7;
     --text-muted: #898781;
     --border: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.2);
+    --grid: #2c2c2a;
+    --axis: #383835;
+
+    --accent: #f4f3ee;
+    --accent-contrast: #0d0d0d;
+    --focus: #3987e5;
+
     --color-oil: #d95926;
     --color-gas: #3987e5;
     --color-none: #898781;
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+    --series-9: #119caa;
+    --series-10: #c2762e;
+    --series-other: #56554f;
+
     --error-bg: #2a1414;
     --error-border: #e66767;
     --error-text: #f3b5b5;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 6px 20px -6px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 -8px 32px -8px rgba(0, 0, 0, 0.75);
   }
 }
 
@@ -41,8 +111,11 @@ body {
   margin: 0;
   height: 100%;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
   background: var(--page-plane);
   color: var(--text-primary);
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -50,49 +123,96 @@ body {
   flex-direction: column;
 }
 
+:where(button, input, select, textarea, summary, a):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Shared control surface for every button/input/select in the app. */
+input[type="text"],
+select {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.55rem;
+  min-height: 34px;
+}
+
+input[type="text"]::placeholder {
+  color: var(--text-muted);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--focus);
+  width: 15px;
+  height: 15px;
+}
+
 header {
-  padding: 0.75rem 1rem;
+  padding: 0.7rem 1.25rem 0.6rem;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   display: flex;
-  align-items: baseline;
-  gap: 1rem;
+  align-items: center;
+  column-gap: 0.85rem;
+  row-gap: 0.15rem;
   flex-wrap: wrap;
 }
 
 header h1 {
-  font-size: 1.1rem;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
   margin: 0;
+  white-space: nowrap;
 }
 
 header .subtitle {
-  color: var(--text-secondary);
-  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  padding-left: 0.85rem;
+  border-left: 1px solid var(--border);
 }
 
 #top-nav {
   display: flex;
-  gap: 0.25rem;
-  padding: 0.4rem 1rem;
+  gap: 0.15rem;
+  padding: 0.5rem 1.25rem;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
-  flex-wrap: wrap;
 }
 
+/* Segmented control: the active segment is ink, not a data hue. */
 .top-nav-button {
-  padding: 0.4rem 0.8rem;
-  font-size: 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--page-plane);
-  color: var(--text-primary);
+  padding: 0.4rem 0.85rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
   cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s ease, color 0.12s ease;
 }
 
-.top-nav-button[aria-current="page"] {
-  background: var(--color-gas);
-  border-color: var(--color-gas);
-  color: #fff;
+.top-nav-button:hover {
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+}
+
+.top-nav-button[aria-current="page"],
+.top-nav-button[aria-current="page"]:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
 }
 
 #layout {
@@ -117,124 +237,252 @@ header .subtitle {
 #view-licence {
   flex: 1;
   overflow-y: auto;
-  padding: 1rem;
+  padding: 1.25rem;
   min-height: 0;
 }
 
+/* Reading/working column: charts stop sprawling on ultrawide monitors. */
+#view-production > *,
+#view-licence > * {
+  max-width: 1280px;
+  margin-inline: auto;
+}
+
 .production-stats {
-  font-size: 0.85rem;
-  margin-bottom: 0.75rem;
+  font-size: 0.8125rem;
+  margin-top: 1.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.production-stats summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0.35rem 0;
+}
+
+.production-stats summary:hover {
+  color: var(--text-primary);
 }
 
 .production-stats ul {
   margin: 0.35rem 0 0;
-  padding-left: 1.2rem;
+  padding: 0.6rem 0.9rem 0.6rem 2rem;
   color: var(--text-secondary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-variant-numeric: tabular-nums;
 }
 
+/* Control bar: one toolbar holding split tabs, every sub-control and the
+   date/status filters - they were three separately-floating rows before,
+   which read as clutter rather than as one set of controls. */
 .production-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.5rem 0.85rem;
   align-items: center;
-  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: var(--shadow-sm);
 }
 
 .production-tabs {
   display: flex;
-  gap: 0.3rem;
+  gap: 0.15rem;
+  padding: 0.15rem;
+  background: var(--surface-sunken);
+  border-radius: 999px;
+  /* Hug its buttons: the Licence view puts this group straight into a block
+     container, where a plain flex row would stretch the track full width. */
+  width: fit-content;
+  align-self: flex-start;
+}
+
+/* The reading column centres its children with `margin-inline: auto`, which
+   for a fit-content track means a centred pill. In the Licence view the tab
+   group is a direct child of that column, so re-anchor it to the left edge
+   the rest of the view lines up with. (Scoped to that view: in Production
+   the group is a flex child of the toolbar, where an auto right margin
+   would shove the sub-controls to the far edge.) */
+#view-licence > .production-tabs {
+  margin-inline: 0 auto;
 }
 
 .tab-btn {
-  padding: 0.4rem 0.8rem;
-  font-size: 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--page-plane);
-  color: var(--text-primary);
+  padding: 0.35rem 0.8rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
   cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s ease, color 0.12s ease;
 }
 
-.tab-btn.active {
-  background: var(--color-gas);
-  border-color: var(--color-gas);
-  color: #fff;
+.tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.tab-btn.active,
+.tab-btn.active:hover {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
 }
 
 .production-subcontrols {
   display: flex;
   gap: 0.75rem;
-  font-size: 0.82rem;
+  font-size: 0.8125rem;
   align-items: center;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.production-subcontrols label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.production-subcontrols:not([hidden]) + .production-subcontrols:not([hidden]),
+.production-tabs + .production-subcontrols:not([hidden]) {
+  padding-left: 0.85rem;
+  border-left: 1px solid var(--border);
 }
 
 .production-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.6rem 0.85rem;
   align-items: end;
-  font-size: 0.8rem;
-  margin-bottom: 0.5rem;
+  font-size: 0.8125rem;
+  padding: 0.6rem 0.7rem 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 0.7rem;
+}
+
+/* In the Production view the filters are the lower half of the toolbar, so
+   the two join into one card. The Licence view reuses this class on its own
+   (below its map, with no toolbar above), where it stays a whole card. */
+.production-controls + .production-filters {
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
 }
 
 .production-filters label {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  color: var(--text-secondary);
+  gap: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+#pf-clear,
+#lf-clear,
+#lf-fit,
+#lhf-clear,
+#lhf-fit {
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.4rem 0.75rem;
+  min-height: 34px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+#pf-clear:hover,
+#lf-clear:hover,
+#lf-fit:hover,
+#lhf-clear:hover,
+#lhf-fit:hover {
+  background: var(--surface-sunken);
 }
 
 .production-active-filters {
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.6rem;
   min-height: 1em;
 }
 
+#production-chart-wrap {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 0.75rem 0.85rem 0.5rem;
+}
+
+#production-chart {
+  height: clamp(300px, 52vh, 480px);
+}
+
 .production-empty {
-  padding: 2rem;
+  padding: 3rem 2rem;
   text-align: center;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .sr-summary {
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
-  margin-top: 0.5rem;
+  margin-top: 0.6rem;
 }
 
 .production-other-note {
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+  line-height: 1.5;
 }
 
 .production-other-note summary {
   cursor: pointer;
+  color: var(--text-secondary);
 }
 
 .group-detail-panel {
   margin-top: 1rem;
-  padding: 0.75rem;
+  padding: 0.9rem 1rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: var(--surface);
-  font-size: 0.85rem;
+  box-shadow: var(--shadow-sm);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .group-detail-panel h3 {
-  margin: 0 0 0.4rem;
-  font-size: 0.95rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  letter-spacing: -0.01em;
 }
 
 #licence-map-wrap {
   position: relative;
-  height: 480px;
-  margin: 0.5rem 0;
+  height: clamp(320px, 55vh, 560px);
+  margin: 0.5rem 0 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
 }
 
 #licence-map {
@@ -246,10 +494,15 @@ header .subtitle {
   margin-top: 0.5rem;
 }
 
+#licence-summary ul,
+#licence-history-summary ul {
+  font-variant-numeric: tabular-nums;
+}
+
 #sidebar {
-  width: 260px;
+  width: 288px;
   flex: none;
-  padding: 1rem;
+  padding: 1rem 1.1rem 1.5rem;
   border-right: 1px solid var(--border);
   background: var(--surface);
   overflow-y: auto;
@@ -257,74 +510,131 @@ header .subtitle {
 
 #sidebar label {
   display: block;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
 }
 
 #operator-filter {
   width: 100%;
-  padding: 0.4rem;
-  font-size: 0.9rem;
   margin-bottom: 0.5rem;
 }
 
 #view-operator-history {
   width: 100%;
-  padding: 0.4rem;
-  font-size: 0.82rem;
-  margin-bottom: 1rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.45rem;
+  min-height: 34px;
+  margin-bottom: 0.5rem;
   cursor: pointer;
-  border: 1px solid var(--border);
-  background: var(--page-plane);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
   color: var(--text-primary);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
+}
+
+#view-operator-history:hover:not(:disabled) {
+  background: var(--surface-sunken);
 }
 
 #view-operator-history:disabled {
   cursor: not-allowed;
   color: var(--text-muted);
+  background: var(--surface-sunken);
 }
 
 .panel-caveat {
-  font-size: 0.78rem;
-  background: var(--page-plane);
+  font-size: 0.75rem;
+  background: var(--surface-sunken);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--axis);
   color: var(--text-secondary);
-  padding: 0.5rem 0.6rem;
-  border-radius: 4px;
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-sm);
   margin: 0.5rem 0 1rem;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .legend {
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
   border-top: 1px solid var(--border);
-  padding-top: 0.75rem;
-  margin-top: 0.5rem;
+  padding-top: 0.85rem;
+  margin-top: 0.85rem;
 }
 
 .legend h2 {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.08em;
   color: var(--text-muted);
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.55rem;
 }
 
 .legend-row {
   display: flex;
   align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.4rem;
+}
+
+.legend-row label {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.35rem;
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  min-height: 26px;
 }
 
 .legend-swatch {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   flex: none;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* Long explanatory prose is real, and readers need it - but it should be
+   opt-in rather than two paragraphs of grey text crowding the controls
+   every visit (it was ~80% of the sidebar's height before). */
+.legend-details {
+  margin-top: 0.5rem;
+}
+
+.legend-details > summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0;
+}
+
+.legend-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.legend-details > summary::before {
+  content: "›";
+  display: inline-block;
+  transition: transform 0.15s ease;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.legend-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.legend-details > summary:hover {
+  color: var(--text-secondary);
 }
 
 .legend-swatch.oil {
@@ -351,12 +661,15 @@ header .subtitle {
 
 .legend-note {
   margin-top: 0.5rem;
-  line-height: 1.4;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
 #map-container {
   flex: 1;
   position: relative;
+  min-width: 0;
 }
 
 #map {
@@ -365,63 +678,87 @@ header .subtitle {
 }
 
 #field-panel {
-  width: 420px;
+  width: 440px;
   flex: none;
   overflow-y: auto;
   border-left: 1px solid var(--border);
   background: var(--surface);
-  padding: 1rem;
+  padding: 1.1rem 1.25rem 2rem;
   position: relative;
 }
 
 #field-panel-close {
   position: absolute;
-  top: 0.5rem;
+  top: 0.6rem;
   right: 0.75rem;
-  border: none;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 50%;
   background: none;
-  font-size: 1.4rem;
+  font-size: 1.35rem;
   line-height: 1;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 0.25rem;
+  padding: 0;
 }
 
 #field-panel-close:hover {
   color: var(--text-primary);
+  background: var(--surface-sunken);
+  border-color: var(--border);
 }
 
 .panel-field-name {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin: 0 1.5rem 0.5rem 0;
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  margin: 0 2rem 0.5rem 0;
 }
 
 .panel-meta-row {
-  font-size: 0.85rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
   margin-bottom: 0.2rem;
 }
 
 .panel-section-title {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.08em;
   color: var(--text-muted);
-  margin: 1rem 0 0.5rem;
+  margin: 1.25rem 0 0.5rem;
 }
 
 .unit-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit-table th {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
 }
 
 .unit-table th,
 .unit-table td {
   text-align: left;
-  padding: 0.3rem 0.4rem;
+  padding: 0.4rem 0.45rem;
   border-bottom: 1px solid var(--border);
+}
+
+.unit-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .unit-table tr.storage-row {
@@ -458,13 +795,13 @@ header .subtitle {
 
 .chart-box {
   width: 100%;
-  height: 220px;
+  height: 240px;
   margin-top: 0.5rem;
 }
 
 .panel-loading,
 .panel-error {
-  font-size: 0.85rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
   margin-top: 1rem;
 }
@@ -472,97 +809,97 @@ header .subtitle {
 .panel-error {
   white-space: pre-wrap;
   font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
   color: var(--error-text);
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.7rem;
 }
 
 .maplibregl-popup-content {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 0.85rem;
-  padding: 0.6rem 0.8rem;
+  font-size: 0.8125rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
 }
 
 .popup-field-name {
-  font-weight: 600;
-  margin-bottom: 0.25rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.3rem;
 }
 
 .popup-row {
-  color: var(--text-secondary);
+  color: #52514e;
+  font-variant-numeric: tabular-nums;
 }
 
 .popup-caveat {
   margin-top: 0.4rem;
   font-size: 0.75rem;
-  color: var(--text-muted);
+  color: #898781;
 }
 
 footer {
-  padding: 0.5rem 1rem;
+  padding: 0.6rem 1.25rem 0.7rem;
   border-top: 1px solid var(--border);
   background: var(--surface);
-  font-size: 0.78rem;
-  color: var(--text-secondary);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
 #footer-attribution {
-  margin-top: 0.2rem;
+  margin-top: 0.15rem;
 }
 
 #footer-attribution a {
   color: var(--text-secondary);
 }
 
-#status-banner {
-  padding: 0.75rem 1rem;
-  font-size: 0.85rem;
-}
-
-#status-banner.error {
-  background: var(--error-bg);
-  border: 1px solid var(--error-border);
-  color: var(--error-text);
-  margin: 1rem;
-  border-radius: 4px;
-  white-space: pre-wrap;
-  font-family: ui-monospace, monospace;
-}
-
-#status-banner[hidden] {
-  display: none;
-}
-
+#status-banner,
 #equity-status-banner {
-  padding: 0.75rem 1rem;
-  font-size: 0.85rem;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.8125rem;
 }
 
+#status-banner.error,
 #equity-status-banner.warning {
   background: var(--error-bg);
   border: 1px solid var(--error-border);
   color: var(--error-text);
-  margin: 1rem;
-  border-radius: 4px;
+  margin: 1rem 1.25rem;
+  border-radius: var(--radius);
   white-space: pre-wrap;
 }
 
+#status-banner.error {
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+}
+
+#status-banner[hidden],
 #equity-status-banner[hidden] {
   display: none;
 }
 
 .header-methodology-link {
   margin-left: auto;
-  font-size: 0.85rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
   text-decoration: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 0.25rem 0.8rem;
+  white-space: nowrap;
 }
 
 .header-methodology-link:hover,
 .header-methodology-link:focus-visible {
   color: var(--text-primary);
-  border-color: var(--text-secondary);
+  background: var(--surface-sunken);
 }
 
 .methodology-link {
@@ -580,30 +917,23 @@ footer {
 
 #global-search {
   width: 100%;
-  padding: 0.4rem;
-  font-size: 0.9rem;
-}
-
-#global-search:focus-visible {
-  outline: 2px solid var(--color-gas);
-  outline-offset: 1px;
 }
 
 .search-results {
   position: absolute;
   z-index: 20;
-  top: 100%;
+  top: calc(100% + 4px);
   left: 0;
   right: 0;
   margin: 0;
-  padding: 0;
+  padding: 0.25rem;
   list-style: none;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  max-height: 260px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  max-height: 280px;
   overflow-y: auto;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-md);
 }
 
 .search-results[hidden] {
@@ -611,29 +941,28 @@ footer {
 }
 
 .search-result {
-  padding: 0.4rem 0.6rem;
-  font-size: 0.85rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.8125rem;
   cursor: pointer;
-  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 
-.search-result:last-child {
-  border-bottom: none;
-}
-
+.search-result:hover,
 .search-result-active {
-  background: var(--page-plane);
+  background: var(--surface-sunken);
 }
 
 .search-result-type {
   display: inline-block;
-  font-size: 0.68rem;
+  font-size: 0.625rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
+  background: var(--surface-sunken);
   border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 0 0.3rem;
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
   margin-right: 0.4rem;
 }
 
@@ -642,62 +971,78 @@ footer {
 .metric-mode-toggle {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  margin-bottom: 0.75rem;
+  gap: 0.2rem;
+  margin-bottom: 0.85rem;
+  padding: 0.2rem;
+  background: var(--surface-sunken);
+  border-radius: var(--radius);
 }
 
 .mode-button {
-  padding: 0.4rem 0.5rem;
-  font-size: 0.82rem;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  font-size: 0.8125rem;
   text-align: left;
   cursor: pointer;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--page-plane);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-secondary);
 }
 
-.mode-button[aria-pressed="true"] {
-  background: var(--color-gas);
-  color: #fff;
-  border-color: var(--color-gas);
-  font-weight: 600;
+.mode-button:hover {
+  color: var(--text-primary);
 }
 
-.mode-button:focus-visible {
-  outline: 2px solid var(--color-gas);
-  outline-offset: 1px;
+.mode-button[aria-pressed="true"] {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+  font-weight: 600;
 }
 
 #equity-company-input {
   width: 100%;
-  padding: 0.4rem;
-  font-size: 0.9rem;
   margin-bottom: 1rem;
 }
 
 /* --- Equity coverage badges / values --- */
 
 .coverage-badge {
-  font-size: 0.72rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
   white-space: nowrap;
 }
 
 .coverage-complete {
-  background: rgba(27, 175, 122, 0.15);
-  color: #1baf7a;
+  background: rgba(12, 163, 12, 0.14);
+  color: #046504;
 }
 
 .coverage-warning {
-  background: rgba(237, 161, 0, 0.18);
-  color: #a97400;
+  background: rgba(250, 178, 25, 0.2);
+  color: #8a5c00;
 }
 
 .coverage-unavailable {
-  background: var(--border);
+  background: var(--surface-sunken);
   color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .coverage-complete {
+    color: #4ec44e;
+  }
+  :root:not([data-theme="light"]) .coverage-warning {
+    color: #f0bb52;
+  }
 }
 
 .equity-value-unavailable {
@@ -745,31 +1090,34 @@ footer {
 }
 
 .stream-selector {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: 0.3rem;
+  gap: 0.15rem;
   margin-top: 0.5rem;
+  padding: 0.15rem;
+  background: var(--surface-sunken);
+  border-radius: 999px;
 }
 
 .stream-tab {
-  padding: 0.3rem 0.55rem;
-  font-size: 0.78rem;
+  padding: 0.3rem 0.7rem;
+  font: inherit;
+  font-size: 0.75rem;
   cursor: pointer;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--page-plane);
+  border: none;
+  border-radius: 999px;
+  background: transparent;
   color: var(--text-secondary);
 }
 
-.stream-tab[aria-selected="true"] {
-  background: var(--color-gas);
-  color: #fff;
-  border-color: var(--color-gas);
+.stream-tab:hover {
+  color: var(--text-primary);
 }
 
-.stream-tab:focus-visible {
-  outline: 2px solid var(--color-gas);
-  outline-offset: 1px;
+.stream-tab[aria-selected="true"] {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
 }
 
 .field-slug-list {
@@ -795,30 +1143,31 @@ footer {
 
 .field-panel-tabs {
   display: flex;
-  gap: 0.3rem;
+  gap: 1rem;
   border-bottom: 1px solid var(--border);
-  margin: 0.5rem 0;
+  margin: 0.85rem 0 0.5rem;
 }
 
 .panel-tab {
-  padding: 0.35rem 0.6rem;
-  font-size: 0.82rem;
+  padding: 0.4rem 0.1rem 0.5rem;
+  font: inherit;
+  font-size: 0.8125rem;
   cursor: pointer;
   border: none;
   border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
   background: none;
+  color: var(--text-muted);
+}
+
+.panel-tab:hover {
   color: var(--text-secondary);
 }
 
 .panel-tab[aria-selected="true"] {
   color: var(--text-primary);
-  border-bottom-color: var(--color-gas);
+  border-bottom-color: var(--accent);
   font-weight: 600;
-}
-
-.panel-tab:focus-visible {
-  outline: 2px solid var(--color-gas);
-  outline-offset: 1px;
 }
 
 .panel-tab[hidden] {
@@ -845,4 +1194,225 @@ footer {
   font-size: 0.8rem;
   color: var(--text-secondary);
   margin-top: 0.5rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Responsive: phones and small tablets.
+
+   The Fields map was the real breakage - a fixed 260px sidebar beside a
+   440px panel left the map a ~50px slot on a phone. Below 860px the three
+   columns stop being columns: the map comes FIRST at a usable height, the
+   controls sit under it in normal page flow (so the search dropdown is no
+   longer clipped by a scroll container), and the field panel becomes a
+   bottom sheet over the map instead of a third column.
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 860px) {
+  header {
+    padding: 0.6rem 0.9rem;
+    row-gap: 0.2rem;
+  }
+
+  header h1 {
+    font-size: 1rem;
+    white-space: normal;
+  }
+
+  header .subtitle {
+    flex-basis: 100%;
+    padding-left: 0;
+    border-left: none;
+    font-size: 0.75rem;
+    order: 3;
+  }
+
+  .header-methodology-link {
+    order: 2;
+  }
+
+  /* One scrolling rail rather than a wrapped pile of buttons. */
+  #top-nav {
+    padding: 0.45rem 0.9rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  #top-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  #view-production,
+  #view-licence {
+    padding: 0.9rem;
+  }
+
+  #layout {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  #map-container {
+    order: -1;
+    flex: none;
+    height: 58vh;
+    min-height: 320px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #sidebar {
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    border-right: none;
+    padding: 0.9rem 0.9rem 2rem;
+  }
+
+  /* Bottom sheet. #field-panel is toggled by the `hidden` attribute in
+     main.js, so this needs no JS of its own. */
+  #field-panel {
+    position: fixed;
+    inset: auto 0 0 0;
+    width: 100%;
+    max-height: 82vh;
+    z-index: 30;
+    border-left: none;
+    border-top: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: var(--shadow-lg);
+    padding: 1.1rem 1rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    overscroll-behavior: contain;
+  }
+
+  /* Grab handle, so the sheet reads as a sheet. */
+  #field-panel::before {
+    content: "";
+    position: sticky;
+    top: -0.35rem;
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: -0.35rem auto 0.6rem;
+    border-radius: 999px;
+    background: var(--axis);
+  }
+
+  #field-panel-close {
+    width: 40px;
+    height: 40px;
+    top: 0.4rem;
+    right: 0.5rem;
+    background: var(--surface-sunken);
+    border-color: var(--border);
+  }
+
+  .production-controls {
+    gap: 0.5rem;
+  }
+
+  .production-tabs {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .production-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Vertical dividers between control groups stop making sense once the
+     groups wrap onto their own lines. */
+  .production-subcontrols:not([hidden]) + .production-subcontrols:not([hidden]),
+  .production-tabs + .production-subcontrols:not([hidden]) {
+    padding-left: 0;
+    border-left: none;
+  }
+
+  .production-filters {
+    gap: 0.5rem 0.6rem;
+  }
+
+  .production-filters label {
+    flex: 1 1 auto;
+  }
+
+  #production-chart {
+    height: clamp(260px, 46vh, 380px);
+  }
+
+  /* Data tables keep their columns and scroll sideways rather than
+     crushing every column to one word per line. */
+  .unit-table,
+  .equity-latest-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #licence-map-wrap {
+    height: 52vh;
+    min-height: 300px;
+  }
+}
+
+@media (max-width: 540px) {
+  html,
+  body {
+    font-size: 14.5px;
+  }
+
+  /* Comfortable thumb targets on the controls people actually poke. */
+  .top-nav-button,
+  .tab-btn,
+  .mode-button,
+  .stream-tab {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  input[type="text"],
+  select,
+  #view-operator-history,
+  #pf-clear,
+  #lf-clear,
+  #lf-fit,
+  #lhf-clear,
+  #lhf-fit {
+    min-height: 40px;
+    font-size: 16px; /* iOS Safari zooms the page for anything under 16px */
+  }
+
+  /* From/To share a row - they hold six characters each, so a full-width
+     row apiece pushed the chart most of a screen further down. */
+  .production-filters label {
+    flex: 1 1 calc(50% - 0.3rem);
+    min-width: 0;
+  }
+
+  .production-filters label input[type="text"],
+  .production-filters label select {
+    width: 100%;
+  }
+
+  #production-chart-wrap {
+    padding: 0.6rem 0.5rem 0.4rem;
+    border-radius: var(--radius);
+  }
+
+  footer {
+    padding: 0.6rem 0.9rem;
+  }
+
+  #status-banner.error,
+  #equity-status-banner.warning {
+    margin: 0.75rem 0.9rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
 }

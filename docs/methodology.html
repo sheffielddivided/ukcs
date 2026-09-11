@@ -6,12 +6,80 @@
   <title>Methodology &mdash; UKCS Oil &amp; Gas Production Explorer</title>
   <link rel="stylesheet" href="./styles.css" />
   <style>
-    main { max-width: 46rem; margin: 0 auto; padding: 1.5rem; line-height: 1.55; }
-    main h2 { margin-top: 2rem; }
-    main code { background: rgba(127,127,127,0.15); padding: 0.1em 0.3em; border-radius: 3px; }
-    main table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
-    main th, main td { border: 1px solid rgba(127,127,127,0.4); padding: 0.4rem 0.6rem; text-align: left; }
+    /* A reading column, sized for prose, on the shared design tokens. */
+    main {
+      max-width: 44rem;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+      line-height: 1.65;
+      font-size: 0.9375rem;
+      color: var(--text-secondary);
+    }
+    main h1 {
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin: 0 0 0.25rem;
+      color: var(--text-primary);
+    }
+    main h2 {
+      margin-top: 2.75rem;
+      font-size: 1.125rem;
+      letter-spacing: -0.01em;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+    main h3 {
+      margin-top: 1.75rem;
+      font-size: 0.9375rem;
+      color: var(--text-primary);
+    }
+    main strong { color: var(--text-primary); }
+    main code {
+      background: var(--surface-sunken);
+      border: 1px solid var(--border);
+      font-size: 0.85em;
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+    main table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 1rem 0;
+      font-size: 0.875rem;
+      font-variant-numeric: tabular-nums;
+    }
+    main th, main td {
+      border-bottom: 1px solid var(--border);
+      padding: 0.5rem 0.6rem;
+      text-align: left;
+    }
+    main th {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+    main a { color: var(--text-primary); }
     main .not-yet { opacity: 0.8; font-style: italic; }
+    .back-link {
+      display: inline-block;
+      margin-bottom: 2rem;
+      font-size: 0.8125rem;
+      text-decoration: none;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      padding: 0.25rem 0.8rem;
+    }
+    .back-link:hover { background: var(--surface-sunken); color: var(--text-primary); }
+    @media (max-width: 540px) {
+      main { padding: 1.25rem 0.9rem 3rem; }
+      main h1 { font-size: 1.5rem; }
+      /* Wide reference tables scroll rather than squeezing every column. */
+      main table { display: block; overflow-x: auto; white-space: nowrap; }
+    }
   </style>
 </head>
 <body>
@@ -22,7 +90,7 @@
 
   <main>
     <h1>Methodology</h1>
-    <p><a href="./index.html">&larr; Back to the explorer</a></p>
+    <a href="./index.html" class="back-link">&larr; Back to the explorer</a>
 
     <h2>Production data</h2>
     <p>

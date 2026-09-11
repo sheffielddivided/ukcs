@@ -6,7 +6,7 @@
 // (etl/overview.py) - no gas-conversion arithmetic happens here.
 
 import { getOverviewArtifact, DataLoadError } from "./state.js";
-import { renderProductionChart, disposeProductionChart } from "./charts.js";
+import { renderProductionChart, disposeProductionChart, seriesPalette } from "./charts.js";
 import { formatPeriodShort, slugify } from "./format.js";
 import { parseUrlState, updateUrlState } from "./urlstate.js";
 
@@ -20,10 +20,24 @@ const RETROSPECTIVE_CAVEAT =
   "Current-group analytical view: historical production has been regrouped using current company " +
   "relationships. It does not represent company ownership structures at the time.";
 
-const COLORS = [
-  "#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#8855dd", "#d64a8a",
-  "#3fa7d6", "#c9862a", "#5ec98f", "#9d6bd6", "#d65454", "#4a9ed6",
-];
+// Series colours come from charts.js's seriesPalette(), which reads the
+// stylesheet's own --series-N tokens - so there is one palette in the
+// project, it follows the page theme, and the ten slots are the validated
+// set (adjacent-pair CVD and normal-vision floors cleared in BOTH modes).
+// The previous local array cycled back through near-duplicates of its own
+// opening hues by slot 7 (a second blue at #3fa7d6 beside #2a78d6), which
+// is exactly the confusion a fixed, capped slot order exists to prevent.
+function palette() {
+  return seriesPalette().colors;
+}
+
+function otherColor() {
+  return seriesPalette().other;
+}
+
+function totalColor() {
+  return (getComputedStyle(document.documentElement).getPropertyValue("--text-primary") || "").trim() || "#0b0b0b";
+}
 
 // Applies to both "By company" (all companies shown) and a single
 // company's own "By field" breakdown (spec 2026-09-10 continuation:
@@ -66,7 +80,6 @@ export async function initProductionView(container) {
   root = container;
   root.innerHTML = `
     <div id="production-error" class="panel-error" hidden></div>
-    <div id="production-stats" class="production-stats"></div>
     <div class="production-controls">
       <div id="production-split-tabs" class="production-tabs" role="tablist" aria-label="Production split mode"></div>
       <div id="production-freq-toggle" class="production-subcontrols"></div>
@@ -78,12 +91,16 @@ export async function initProductionView(container) {
     <div id="production-active-filters" class="production-active-filters" aria-live="polite"></div>
     <div id="production-caveat" class="panel-caveat" hidden>${escapeHtml(RETROSPECTIVE_CAVEAT)}</div>
     <div id="production-chart-wrap">
-      <div id="production-chart" style="height:360px"></div>
+      <div id="production-chart"></div>
       <div id="production-empty" class="production-empty" hidden>No data for selected filters</div>
     </div>
     <div id="production-other-note" class="production-other-note" hidden></div>
     <div id="production-summary" class="sr-summary" aria-live="polite"></div>
     <div id="production-group-detail"></div>
+    <!-- Grouping coverage is provenance, not the headline: it sits below
+         the chart so the chart is the first thing on screen (on a phone it
+         was pushing the plot most of a screen down). -->
+    <div id="production-stats" class="production-stats"></div>
   `;
 
   try {
@@ -379,8 +396,8 @@ function renderCategoryToggle(state, fieldBreakdownAvailable) {
 function commodityCategorySeries(companyDoc, periods) {
   const byPeriod = new Map(companyDoc.series.map((p) => [p.period, p]));
   return [
-    { name: "Liquids", color: COLORS[0], data: periods.map((p) => byPeriod.get(p)?.liquids_mboed?.value ?? null) },
-    { name: "Natural gas", color: COLORS[1], data: periods.map((p) => byPeriod.get(p)?.natural_gas_mboed?.value ?? null) },
+    { name: "Liquids", color: palette()[0], data: periods.map((p) => byPeriod.get(p)?.liquids_mboed?.value ?? null) },
+    { name: "Natural gas", color: palette()[1], data: periods.map((p) => byPeriod.get(p)?.natural_gas_mboed?.value ?? null) },
   ];
 }
 
@@ -393,7 +410,7 @@ async function fieldCategorySeries(groupName, companyDoc, periods) {
     const byPeriod = new Map(fieldDoc.series.map((p) => [p.period, p]));
     return {
       name: fieldDoc.name,
-      color: COLORS[i % COLORS.length],
+      color: palette()[i % palette().length],
       data: periods.map((p) => byPeriod.get(p)?.total_mboed?.value ?? null),
     };
   });
@@ -415,7 +432,7 @@ async function fieldCategorySeries(groupName, companyDoc, periods) {
       for (const s of series) sumDisplayed += s.data[idx] || 0;
       return Math.max(0, +(total - sumDisplayed).toFixed(3));
     });
-    series.push({ name: "Other fields", color: "#b8b8b8", data: otherData });
+    series.push({ name: "Other fields", color: otherColor(), data: otherData });
     renderOtherNote("Other fields", rest.map((f) => f.name));
   }
 
@@ -490,10 +507,10 @@ async function renderCommoditySplit(state) {
     document.getElementById("production-chart"),
     periods,
     [
-      { name: "Liquids", color: COLORS[0], data: liquidsData },
-      { name: "Natural gas", color: COLORS[1], data: gasData },
+      { name: "Liquids", color: palette()[0], data: liquidsData },
+      { name: "Natural gas", color: palette()[1], data: gasData },
     ],
-    { name: "Total", color: "#1a1a1a", data: totalData }
+    { name: "Total", color: totalColor(), data: totalData }
   );
 
   const latest = points[points.length - 1];
@@ -620,7 +637,7 @@ async function renderCompanySplit(state) {
       const byPeriod = new Map(entry.series.map((p) => [p.period, p]));
       return {
         name: entry.name,
-        color: COLORS[i % COLORS.length],
+        color: palette()[i % palette().length],
         data: periods.map((period) => byPeriod.get(period)?.total_mboed?.value ?? null),
       };
     });
@@ -635,7 +652,7 @@ async function renderCompanySplit(state) {
         }
         return sum;
       });
-      monthlyStacked.push({ name: "Other companies", color: "#b8b8b8", data: otherData });
+      monthlyStacked.push({ name: "Other companies", color: otherColor(), data: otherData });
       cappedNote = ` (top ${top.length} of ${top.length + rest.length} shown, rest grouped as Other)`;
       renderOtherNote("Other companies", rest.map((entry) => entry.name));
     }
@@ -756,7 +773,7 @@ async function renderFieldSplit(state) {
 
   const monthlyFieldSeries = selectedSlugs.map((slug, i) => ({
     name: fields[slug].name,
-    color: COLORS[i % COLORS.length],
+    color: palette()[i % palette().length],
     data: periods.map((period) => {
       const v = fieldSeriesByPeriod[i].get(period);
       return v == null ? null : v;
@@ -788,13 +805,13 @@ async function renderFieldSplit(state) {
     for (const s of fieldSeries) sumDisplayed += s.data[idx] || 0;
     return Math.max(0, +(total - sumDisplayed).toFixed(3));
   });
-  const stacked = [...fieldSeries, { name: "Other fields", color: "#b8b8b8", data: otherData }];
+  const stacked = [...fieldSeries, { name: "Other fields", color: otherColor(), data: otherData }];
 
   await renderProductionChart(
     document.getElementById("production-chart"),
     displayPeriods,
     stacked,
-    { name: "Total", color: "#1a1a1a", data: totalData }
+    { name: "Total", color: totalColor(), data: totalData }
   );
 
   const unitLabel = annual ? `${displayPeriods.length} year(s) (annual average)` : `${periods.length} months`;

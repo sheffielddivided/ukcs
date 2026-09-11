@@ -76,15 +76,18 @@
         <div class="legend-row">
           <label><input type="checkbox" id="layer-toggle-outlines" checked /> Field outlines</label>
         </div>
-        <div class="legend-note">
-          Field outlines are NSTA's own authoritative field-determination boundaries
-          (a separate dataset from the production figures) - a field with no matching
-          boundary still shows as a marker. See <a href="./methodology.html">methodology</a>.
-        </div>
+        <details class="legend-details">
+          <summary>About field outlines</summary>
+          <div class="legend-note">
+            Field outlines are NSTA's own authoritative field-determination boundaries
+            (a separate dataset from the production figures) - a field with no matching
+            boundary still shows as a marker. See <a href="./methodology.html">methodology</a>.
+          </div>
+        </details>
       </div>
 
       <div class="legend">
-        <h2>Marker colour</h2>
+        <h2>Field colour</h2>
         <div class="legend-row">
           <span class="legend-swatch oil"></span> Oil-dominant field
         </div>
@@ -94,18 +97,21 @@
         <div class="legend-row">
           <span class="legend-swatch none"></span> No latest-period production
         </div>
-        <div class="legend-note">
-          Dominant commodity and marker size are by share of total_mboed, a derived
-          analytical measure published in the underlying data (natural gas converted
-          at 6,000 scf per barrel of oil equivalent - a conventional energy-equivalence
-          factor, not a measured calorific value). Marker radius &prop; &radic;(total_mboed).
-          See <a href="./methodology.html">methodology</a>.
-        </div>
-        <div class="legend-note">
-          Operator shown is the <em>current</em> operator of record, applied
-          retrospectively to all periods (see spec section 6.1). Not
-          necessarily who operated the field historically.
-        </div>
+        <details class="legend-details">
+          <summary>How colour and size are derived</summary>
+          <div class="legend-note">
+            Dominant commodity and marker size are by share of total_mboed, a derived
+            analytical measure published in the underlying data (natural gas converted
+            at 6,000 scf per barrel of oil equivalent - a conventional energy-equivalence
+            factor, not a measured calorific value). Marker radius &prop; &radic;(total_mboed).
+            See <a href="./methodology.html">methodology</a>.
+          </div>
+          <div class="legend-note">
+            Operator shown is the <em>current</em> operator of record, applied
+            retrospectively to all periods (see spec section 6.1). Not
+            necessarily who operated the field historically.
+          </div>
+        </details>
       </div>
     </aside>
 

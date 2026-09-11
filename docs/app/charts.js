@@ -50,10 +50,139 @@ function attachResizeListener() {
   if (resizeListenerAttached) return;
   resizeListenerAttached = true;
   window.addEventListener("resize", () => {
-    if (liquidsChart) liquidsChart.resize();
-    if (gasChart) gasChart.resize();
-    if (fieldAnnualChart) fieldAnnualChart.resize();
+    // Every live chart, not just the field panel's pair - an ECharts
+    // instance never reflows on its own, so one left out of this list
+    // keeps its old pixel width after a rotation or window resize.
+    for (const chart of [liquidsChart, gasChart, fieldAnnualChart, equityChart, productionChart]) {
+      if (chart) chart.resize();
+    }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Chart theme
+//
+// Colours are read from the stylesheet's design tokens at render time rather
+// than hardcoded here, so there is exactly ONE palette in the project and
+// charts follow the page's light/dark theme automatically (the dark steps are
+// a selected set for the dark surface, not an auto-flip of the light ones -
+// see docs/styles.css). A chart rendered before the stylesheet resolves falls
+// back to the light-mode value baked in as the second argument.
+// ---------------------------------------------------------------------------
+
+const FONT_FAMILY = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+
+function chartTheme() {
+  const css = getComputedStyle(document.documentElement);
+  const token = (name, fallback) => (css.getPropertyValue(name) || "").trim() || fallback;
+  return {
+    surface: token("--surface", "#fcfcfb"),
+    surfaceRaised: token("--surface-raised", "#ffffff"),
+    grid: token("--grid", "#e1e0d9"),
+    axis: token("--axis", "#c3c2b7"),
+    border: token("--border-strong", "rgba(11,11,11,0.18)"),
+    ink: token("--text-primary", "#0b0b0b"),
+    secondary: token("--text-secondary", "#52514e"),
+    muted: token("--text-muted", "#898781"),
+    series: [
+      token("--series-1", "#2a78d6"),
+      token("--series-2", "#eb6834"),
+      token("--series-3", "#1baf7a"),
+      token("--series-4", "#eda100"),
+      token("--series-5", "#e87ba4"),
+      token("--series-6", "#008300"),
+      token("--series-7", "#4a3aa7"),
+      token("--series-8", "#e34948"),
+      token("--series-9", "#009aa8"),
+      token("--series-10", "#9c5f1f"),
+    ],
+    other: token("--series-other", "#c3c2b7"),
+  };
+}
+
+/** The categorical series palette, in fixed slot order, for the current
+ * theme. Callers assign slot N to the Nth series and never cycle past the
+ * end - beyond ten series, identity stops being readable by colour, which
+ * is why both split views fold the remainder into a single "Other". */
+export function seriesPalette() {
+  const theme = chartTheme();
+  return { colors: theme.series, other: theme.other };
+}
+
+// Recessive chrome: hairline gridlines one step off the surface, no axis
+// line doubling up with the baseline, muted tick labels.
+function axisDefaults(theme) {
+  return {
+    category: {
+      axisLine: { lineStyle: { color: theme.axis } },
+      axisTick: { show: false },
+      axisLabel: { color: theme.muted, fontSize: 11, fontFamily: FONT_FAMILY, hideOverlap: true },
+    },
+    value: {
+      splitLine: { lineStyle: { color: theme.grid, width: 1, type: "solid" } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: theme.muted, fontSize: 11, fontFamily: FONT_FAMILY },
+      nameTextStyle: { color: theme.muted, fontSize: 11, align: "left" },
+      nameGap: 12,
+    },
+  };
+}
+
+function tooltipDefaults(theme) {
+  return {
+    backgroundColor: theme.surfaceRaised,
+    borderColor: theme.border,
+    borderWidth: 1,
+    padding: [8, 10],
+    extraCssText: "border-radius:10px;box-shadow:0 6px 20px -6px rgba(11,11,11,0.18);",
+    textStyle: { color: theme.ink, fontSize: 12, fontFamily: FONT_FAMILY },
+    axisPointer: { lineStyle: { color: theme.axis }, crossStyle: { color: theme.axis } },
+  };
+}
+
+/** One segment of a stacked bar. Segments are separated by a gap in the
+ * surface colour (a border drawn in the surface colour on each of two
+ * touching segments) rather than by an outline: an ink stroke would add
+ * weight that isn't data, while the gap lets neighbouring slots read as
+ * distinct without one.
+ *
+ * `dense` turns that gap off. ECharts borders a bar on all four sides, so
+ * on a long series - the full 1975-2026 history is 52 columns, a few pixels
+ * each on a phone - a 1px border per side eats most of the bar's width and
+ * the run reads as hairline stripes instead of a mass. Dense runs are
+ * already separated by the category gap, so they don't need it. */
+function stackedBar(name, color, data, theme, { stack = "production", dense = false } = {}) {
+  return {
+    name,
+    type: "bar",
+    stack,
+    color,
+    data,
+    barMaxWidth: 24,
+    barCategoryGap: dense ? "12%" : "20%",
+    itemStyle: dense ? {} : { borderColor: theme.surface, borderWidth: 1 },
+  };
+}
+
+// Above this many categories, bars are too narrow to carry a surface gap.
+const DENSE_CATEGORY_COUNT = 36;
+
+function legendDefaults(theme) {
+  return {
+    type: "scroll",
+    icon: "circle",
+    itemWidth: 9,
+    itemHeight: 9,
+    itemGap: 14,
+    // Legend text wears an ink token, never the series colour - a light
+    // categorical hue is illegible as text; the dot beside it carries identity.
+    textStyle: { color: theme.secondary, fontSize: 11, fontFamily: FONT_FAMILY },
+    pageTextStyle: { color: theme.muted, fontSize: 11 },
+    pageIconColor: theme.secondary,
+    pageIconInactiveColor: theme.axis,
+    pageIconSize: 10,
+  };
 }
 
 export async function renderHistoryCharts(liquidsEl, gasEl, series) {
@@ -63,47 +192,50 @@ export async function renderHistoryCharts(liquidsEl, gasEl, series) {
   if (liquidsChart) liquidsChart.dispose();
   if (gasChart) gasChart.dispose();
 
+  const theme = chartTheme();
+  const axes = axisDefaults(theme);
   const periods = series.map((s) => s.period);
-  const axisLabel = { rotate: 45, fontSize: 10 };
-  const grid = { top: 56, left: 55, right: 20, bottom: 40 };
+  const grid = { top: 54, left: 8, right: 16, bottom: 8, containLabel: true };
+  const title = (text) => ({
+    text,
+    left: 0,
+    top: 0,
+    textStyle: { fontSize: 12.5, fontWeight: 600, color: theme.ink, fontFamily: FONT_FAMILY },
+  });
+  const line = (name, color, data) => ({
+    name,
+    type: "line",
+    showSymbol: false,
+    color,
+    data,
+    lineStyle: { width: 2, cap: "round", join: "round" },
+  });
 
   liquidsChart = echarts.init(liquidsEl);
   liquidsChart.setOption({
-    title: { text: "Oil & condensate (mb/d)", left: 4, textStyle: { fontSize: 13 } },
-    tooltip: { trigger: "axis" },
-    legend: { data: ["Oil", "Condensate"], top: 26, textStyle: { fontSize: 11 } },
+    title: title("Oil & condensate (mb/d)"),
+    tooltip: { trigger: "axis", ...tooltipDefaults(theme) },
+    legend: { ...legendDefaults(theme), data: ["Oil", "Condensate"], top: 22, left: 0 },
     grid,
-    xAxis: { type: "category", data: periods, axisLabel },
-    yAxis: { type: "value", name: "mb/d" },
+    xAxis: { type: "category", data: periods, ...axes.category },
+    yAxis: { type: "value", ...axes.value },
     series: [
-      {
-        name: "Oil", type: "line", showSymbol: false, color: "#2a78d6",
-        data: series.map((s) => s.oil_mbd),
-      },
-      {
-        name: "Condensate", type: "line", showSymbol: false, color: "#eb6834",
-        data: series.map((s) => s.condensate_mbd),
-      },
+      line("Oil", theme.series[0], series.map((s) => s.oil_mbd)),
+      line("Condensate", theme.series[1], series.map((s) => s.condensate_mbd)),
     ],
   });
 
   gasChart = echarts.init(gasEl);
   gasChart.setOption({
-    title: { text: "Gas (MMscf/d)", left: 4, textStyle: { fontSize: 13 } },
-    tooltip: { trigger: "axis" },
-    legend: { data: ["Associated gas", "Dry gas"], top: 26, textStyle: { fontSize: 11 } },
+    title: title("Gas (MMscf/d)"),
+    tooltip: { trigger: "axis", ...tooltipDefaults(theme) },
+    legend: { ...legendDefaults(theme), data: ["Associated gas", "Dry gas"], top: 22, left: 0 },
     grid,
-    xAxis: { type: "category", data: periods, axisLabel },
-    yAxis: { type: "value", name: "MMscf/d" },
+    xAxis: { type: "category", data: periods, ...axes.category },
+    yAxis: { type: "value", ...axes.value },
     series: [
-      {
-        name: "Associated gas", type: "line", showSymbol: false, color: "#1baf7a",
-        data: series.map((s) => s.assoc_gas_mmscfd),
-      },
-      {
-        name: "Dry gas", type: "line", showSymbol: false, color: "#eda100",
-        data: series.map((s) => s.dry_gas_mmscfd),
-      },
+      line("Associated gas", theme.series[2], series.map((s) => s.assoc_gas_mmscfd)),
+      line("Dry gas", theme.series[3], series.map((s) => s.dry_gas_mmscfd)),
     ],
   });
 }
@@ -121,16 +253,18 @@ export async function renderFieldAnnualChart(el, years, oilMboed, gasMboed) {
   attachResizeListener();
 
   if (fieldAnnualChart) fieldAnnualChart.dispose();
+  const theme = chartTheme();
+  const axes = axisDefaults(theme);
   fieldAnnualChart = echarts.init(el);
   fieldAnnualChart.setOption({
-    tooltip: { trigger: "axis" },
-    legend: { data: ["Oil", "Gas"], top: 4, textStyle: { fontSize: 11 } },
-    grid: { top: 40, left: 60, right: 20, bottom: 40 },
-    xAxis: { type: "category", data: years },
-    yAxis: { type: "value", name: "mboe/d" },
+    tooltip: { trigger: "axis", ...tooltipDefaults(theme) },
+    legend: { ...legendDefaults(theme), data: ["Oil", "Gas"], top: 0, left: 78, right: 4 },
+    grid: { top: 38, left: 8, right: 16, bottom: 4, containLabel: true },
+    xAxis: { type: "category", data: years, ...axes.category },
+    yAxis: { type: "value", name: "mboe/d", ...axes.value },
     series: [
-      { name: "Oil", type: "bar", stack: "production", color: "#eb6834", data: oilMboed },
-      { name: "Gas", type: "bar", stack: "production", color: "#2a78d6", data: gasMboed },
+      stackedBar("Oil", theme.series[1], oilMboed, theme, { dense: years.length > DENSE_CATEGORY_COUNT }),
+      stackedBar("Gas", theme.series[0], gasMboed, theme, { dense: years.length > DENSE_CATEGORY_COUNT }),
     ],
   });
   return fieldAnnualChart;
@@ -156,10 +290,19 @@ export async function renderEquityStreamChart(el, points, streamLabel, unit) {
   const periods = points.map((p) => p.period);
   const values = points.map((p) => (p.status === "unavailable" ? null : p.value));
 
+  const theme = chartTheme();
+  const axes = axisDefaults(theme);
+
   equityChart.setOption({
-    title: { text: `${streamLabel} (${unit})`, left: 4, textStyle: { fontSize: 13 } },
+    title: {
+      text: streamLabel,
+      left: 0,
+      top: 0,
+      textStyle: { fontSize: 12.5, fontWeight: 600, color: theme.ink, fontFamily: FONT_FAMILY },
+    },
     tooltip: {
       trigger: "axis",
+      ...tooltipDefaults(theme),
       formatter: (params) => {
         const p = params[0];
         const point = points[p.dataIndex];
@@ -173,16 +316,19 @@ export async function renderEquityStreamChart(el, points, streamLabel, unit) {
         );
       },
     },
-    grid: { top: 56, left: 60, right: 20, bottom: 40 },
-    xAxis: { type: "category", data: periods, axisLabel: { rotate: 45, fontSize: 10 } },
-    yAxis: { type: "value", name: unit },
+    grid: { top: 46, left: 8, right: 16, bottom: 4, containLabel: true },
+    xAxis: { type: "category", data: periods, ...axes.category },
+    // The unit lives on the axis, not in the title: one stream per chart,
+    // one unit per axis, and the axis is where a reader looks for it.
+    yAxis: { type: "value", name: unit, ...axes.value },
     series: [
       {
         name: streamLabel,
         type: "line",
         showSymbol: false,
         connectNulls: false,
-        color: "#2a78d6",
+        color: theme.series[0],
+        lineStyle: { width: 2, cap: "round", join: "round" },
         data: values,
       },
     ],
@@ -205,30 +351,38 @@ export async function renderProductionChart(el, periods, stackedSeries, totalSer
   if (productionChart) productionChart.dispose();
   productionChart = echarts.init(el);
 
-  const series = stackedSeries.map((s) => ({
-    name: s.name,
-    type: "bar",
-    stack: "production",
-    color: s.color,
-    data: s.data,
-  }));
+  const theme = chartTheme();
+  const axes = axisDefaults(theme);
+
+  const dense = periods.length > DENSE_CATEGORY_COUNT;
+  const series = stackedSeries.map((s) => stackedBar(s.name, s.color, s.data, theme, { dense }));
   if (totalSeries) {
     series.push({
       name: totalSeries.name || "Total",
       type: "line",
       showSymbol: false,
-      color: totalSeries.color || "#1a1a1a",
+      // The reconciling total is chrome, not a category: it wears ink so it
+      // reads as "the envelope" and never competes with a series colour.
+      color: totalSeries.color || theme.ink,
+      lineStyle: { width: 2, cap: "round", join: "round" },
       data: totalSeries.data,
       z: 10,
     });
   }
 
   productionChart.setOption({
-    tooltip: { trigger: "axis" },
-    legend: { top: 4, textStyle: { fontSize: 11 } },
-    grid: { top: 40, left: 60, right: 20, bottom: 60 },
-    xAxis: { type: "category", data: periods, axisLabel: { rotate: 45, fontSize: 10 } },
-    yAxis: { type: "value", name: unit },
+    tooltip: { trigger: "axis", ...tooltipDefaults(theme) },
+    // The unit label sits at the top-left (the y-axis `name`), so the legend
+    // is bounded to the right of it and scrolls within that space. Letting
+    // both claim the top-left is what had the legend sitting on top of
+    // "mboe/d" on a narrow screen. A ten-series split pages rather than
+    // wrapping (ECharts' scroll legend is single-row by design); every
+    // segment is still identifiable without paging via the axis tooltip,
+    // which names each series at the hovered period.
+    legend: { ...legendDefaults(theme), top: 0, left: 78, right: 4 },
+    grid: { top: 44, left: 8, right: 16, bottom: 4, containLabel: true },
+    xAxis: { type: "category", data: periods, ...axes.category },
+    yAxis: { type: "value", name: unit, ...axes.value },
     series,
   });
   return productionChart;
