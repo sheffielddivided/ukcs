@@ -2437,3 +2437,34 @@ the page on focus). `prefers-reduced-motion: reduce` disables all transitions.
 One accepted edge case: charts pick up the theme at render time, so switching OS theme with a
 chart already on screen leaves that chart on the old palette until the next render. A live
 `matchMedia` listener was judged not worth the re-render churn.
+
+### 17.14 Footer unpinned — the document scrolls, not the view (2026-09-11) — IMPLEMENTED
+
+Requested: "The source info is pinned to the bottom of the screen. That steals a lot of screen.
+Can we unpin it, so that it just is shown when scrolling to the bottom of the screen?"
+
+The footer was never `position: fixed`. It was pinned structurally: `body` was a `height: 100%`
+flex column, each view was `flex: 1; overflow-y: auto`, and the footer was the last flex child —
+a classic app shell where the *view* scrolls inside a fixed frame and the footer therefore never
+moves. Two lines of the source/attribution note sat on every screen in every view.
+
+Inverted: the document is now the scroll container, and the shell is one viewport tall.
+`docs/index.html` wraps header + nav + banners + all three views in a new `#shell`, leaving
+`<footer>` as its sibling. `#shell` is `min-height: 100dvh` (with a `100vh` fallback first) and
+keeps the flex column; the views became `flex: 1 0 auto` with no `overflow-y`, so a short view
+stretches to fill the shell and a long one grows past it. Either way the footer is the next block
+after a viewport-tall shell: just below the fold, reached by scrolling to the bottom. On mobile
+`#layout` likewise drops its `overflow-y: auto` so the stacked map view scrolls the page rather
+than itself.
+
+`#layout` still takes the shell's remaining height on the Fields map view, so the map keeps its
+definite height and the sidebar keeps its own internal scroll — no hardcoded header/nav offset is
+needed anywhere.
+
+Verified in a real browser across all six view/viewport combinations (desktop and 390px phone ×
+Production, Fields map, Licence portfolio): in each, the footer's top starts at or below the
+viewport edge, the document is scrollable, and scrolling to the bottom brings it into view. One
+accepted consequence: on the desktop Fields map view the map fills the viewport and MapLibre
+captures the wheel, so the footer is reached with the scrollbar rather than a wheel over the map.
+The footer is incidental reference material, and the alternative — keeping it permanently on
+screen — is the thing being fixed.

@@ -106,10 +106,13 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+}
+
 html,
 body {
   margin: 0;
-  height: 100%;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 15px;
   line-height: 1.5;
@@ -119,6 +122,16 @@ body {
 }
 
 body {
+  min-height: 100%;
+}
+
+/* The app shell is exactly one viewport tall; the footer is the next block
+   after it, so it sits just below the fold and is revealed by scrolling.
+   When a view's content is longer than the viewport the shell grows with
+   it and the footer follows the content down, as any last block would. */
+#shell {
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -235,10 +248,11 @@ header .subtitle {
 
 #view-production,
 #view-licence {
-  flex: 1;
-  overflow-y: auto;
+  /* Grow to fill the shell when short, grow past it when long - either way
+     the document is the scroll container, never the view, so scrolling to
+     the bottom of the page reaches the footer. */
+  flex: 1 0 auto;
   padding: 1.25rem;
-  min-height: 0;
 }
 
 /* Reading/working column: charts stop sprawling on ultrawide monitors. */
@@ -1248,7 +1262,9 @@ footer {
 
   #layout {
     flex-direction: column;
-    overflow-y: auto;
+    /* The document scrolls, not the layout, so the footer follows the
+       sidebar content instead of being pinned above it. */
+    overflow: visible;
   }
 
   #map-container {

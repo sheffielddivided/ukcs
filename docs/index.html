@@ -13,6 +13,11 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
+  <!-- Everything above the footer. Sized to the viewport so the footer
+       starts just past the fold: the source/attribution note is reference
+       material, not chrome, so it is reached by scrolling to the bottom
+       rather than permanently occupying a strip of every screen. -->
+  <div id="shell">
   <header>
     <h1>UKCS Oil &amp; Gas Production Explorer</h1>
     <span class="subtitle">North Sea Transition Authority open data &mdash; not an official NSTA product</span>
@@ -126,6 +131,7 @@
       </div>
     </aside>
   </div>
+  </div><!-- /#shell -->
 
   <footer>
     <div id="footer-text">Loading&hellip;</div>
