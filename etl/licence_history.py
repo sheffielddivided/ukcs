@@ -47,6 +47,14 @@ from arcgis import (  # noqa: E402
 LICENCE_BLOCKS_HISTORY_ITEM_ID = "855237fb38bb44b2afc52a3ea4a48903"
 
 EXPECTED_FIELDS = {
+    # OBJECTID is the source's own stable row identifier and is published
+    # as each feature's `episode_id` (build_history_geojson below), which
+    # the frontend uses to address one episode. It must therefore be
+    # REQUESTED, not just assumed present: OUT_FIELDS is derived from this
+    # dict, so a field missing here is a field the query never asks for -
+    # and `attributes.get("OBJECTID")` then silently yields None for every
+    # row. Listing it here both fetches it and schema-validates it.
+    "OBJECTID": "esriFieldTypeOID",
     "HISTORY": "esriFieldTypeString",
     "BLOCKREF": "esriFieldTypeString",
     "BLCKSTRTDT": "esriFieldTypeDate",

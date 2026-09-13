@@ -173,7 +173,11 @@ def run_equity_pipeline(
     history_index: dict,
     session,
     previous_equity_meta: dict | None = None,
-    today_month_start: date = date(2026, 9, 1),
+    # None -> the current month, resolved at call time by
+    # resolve_full_history(). Never a fixed literal: the
+    # future_only/pre_equity_history split is defined against real
+    # wall-clock time, so a frozen date quietly goes stale.
+    today_month_start: date | None = None,
 ) -> dict:
     source = fetch_and_validate_source(session, previous_equity_meta)
     fetch_result = source["fetch_result"]

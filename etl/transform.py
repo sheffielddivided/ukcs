@@ -31,6 +31,20 @@ VALUE_FIELD_MAP = {
     "WATPRODMBD": "water_mbd",
 }
 
+# GASPIPVOLM ("Gas to pipeline") is deliberately ABSENT above, even though
+# build.py fetches it and validate.py range-checks it. It is not a fifth
+# production stream: it is a downstream disposition of the SAME gas already
+# counted in DGASPROMMS + AGASPROMMS, so carrying it into a field's totals
+# would double-count. Measured against the live latest period (202606):
+# dry 875.8 + associated 2029.3 = 2905.1 MMscf/d produced, against 2688.5
+# MMscf/d to pipeline - 92.5% of the same gas, not an independent volume.
+#
+# It is still fetched because it is in validate.PRODUCTION_VALUE_FIELDS: a
+# negative value there is a real source-data defect worth failing the build
+# over, whether or not this pipeline publishes the number. Recorded here
+# because "in OUT_FIELDS but not in the artifact" otherwise reads as an
+# oversight.
+
 ROUND_DECIMALS = 3
 
 

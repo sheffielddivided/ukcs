@@ -153,13 +153,23 @@ def resolve_full_history(
     pprs_history: dict[str, list[dict]],
     field_match_index: dict[str, tuple[str, str]],
     raw_rows_by_equity_field: dict[str, list[dict]],
-    today_month_start: date = date(2026, 9, 1),
+    today_month_start: date | None = None,
 ) -> dict:
     """Resolves every PPRS (field, month) in the full production history.
     Two passes: first resolve active intervals for every field-month, then
     categorise the no-active-row cases (pass 2 needs no field-level state -
     see _field_month_gap_category, which compares each field's earliest
-    equity coverage against today_month_start alone)."""
+    equity coverage against today_month_start alone).
+
+    today_month_start defaults to the CURRENT month, resolved at call time.
+    _field_month_gap_category's future_only/pre_equity_history split is
+    defined against real wall-clock time ("the field's earliest equity
+    coverage is itself still in the future"), so a fixed literal here
+    silently stops being true as time passes: coverage that has since
+    begun keeps being reported as future. Tests that need a stable answer
+    pass an explicit date rather than relying on this default."""
+    if today_month_start is None:
+        today_month_start = date.today().replace(day=1)
     per_field_month: dict[tuple[str, str], dict] = {}
 
     for field, points in pprs_history.items():

@@ -11,11 +11,14 @@ deterministically.
 from __future__ import annotations
 
 import sys
-from datetime import date
+import inspect
+
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from etl.equity_artifacts import run_equity_pipeline  # noqa: E402
 from etl.equity_join_historical import (  # noqa: E402
     build_company_summary_historical,
     build_historical_report,
@@ -346,3 +349,45 @@ def test_diagnostic_report_is_deterministic():
     report_a = build_historical_report(make_result())
     report_b = build_historical_report(make_result())
     assert report_a == report_b
+
+
+def test_today_month_start_default_is_resolved_at_call_time_not_frozen():
+    """The future_only/pre_equity_history split is defined against real
+    wall-clock time (see _field_month_gap_category), so the default must
+    be resolved when the function runs. It used to be a frozen
+    `date(2026, 9, 1)` literal in the signature: once real time moved past
+    that month, equity coverage that had already begun kept being
+    reported as still in the future.
+
+    Asserted on the signature rather than on behaviour because a frozen
+    literal and the real clock only disagree once the month turns - a
+    purely behavioural test cannot tell them apart while the literal
+    happens to name the current month, which is exactly the window in
+    which the original bug looked fine."""
+    for fn in (resolve_full_history, run_equity_pipeline):
+        default = inspect.signature(fn).parameters["today_month_start"].default
+        assert default is None, (
+            f"{fn.__name__}'s today_month_start default is {default!r}; a fixed "
+            "date silently goes stale. Use None and resolve date.today() inside."
+        )
+
+
+def test_equity_starting_before_this_month_is_not_classified_as_future():
+    """Companion behavioural check: equity whose coverage began last
+    month is in the past, so a production month before it is
+    pre_equity_history, never future_only."""
+    today = date.today()
+    last_month = (date(today.year, today.month, 1) - timedelta(days=1)).replace(day=1)
+    production_month = (last_month - timedelta(days=1)).replace(day=1)
+
+    periods = [f"{production_month.year:04d}{production_month.month:02d}"]
+    pprs_history = {"ALPHA": _series("ALPHA", periods, oil=50.0)}
+    rows = {"ALPHA": [_row("ALPHA", "ACME", 100, last_month.isoformat(), None)]}
+
+    per_field_month, _ = _resolve(pprs_history, rows)
+
+    category = per_field_month[("ALPHA", periods[0])]["category"]
+    assert category == "pre_equity_history", (
+        f"equity starting {last_month} is in the past, so a production month "
+        f"before it is pre_equity_history, not {category!r}"
+    )

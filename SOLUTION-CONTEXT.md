@@ -6,8 +6,14 @@ Dokumentet er skrevet mot kildekoden, ikke mot `README.md` eller modul-kommentar
 kommentar påstår noe koden ikke gjør, står avviket beskrevet i §11. Alle påstander har filsti,
 og linjenummer der det er relevant.
 
-**Verifisert mot:** commit `c498dcd` på `main`, med et fullt ETL-løp kjørt mot live NSTA-tjenester
+**Verifisert mot:** commit `c498dcd`, med et fullt ETL-løp kjørt mot live NSTA-tjenester
 2026-09-13 (83 sekunder, exit 0). Rådataeksempler er hentet live, ikke rekonstruert.
+
+**Rettelser etter første utgave:** tre av funnene i §11 er nå rettet i koden — `episode_id`
+(§11.17), `today_month_start` (§11.3) og SRI-kommentaren (§11.6). Et fjerde, `GASPIPVOLM`
+(§11.2), viste seg å være riktig oppførsel som bare manglet begrunnelse. Avsnittene er merket
+`RETTET 2026-09-13` og beholdt framfor å slettes: en søsterløsning som bygger det samme trenger
+å vite at fellen finnes, ikke bare at den er lukket her.
 
 **Notasjon:** `USIKKER:` markerer noe jeg ikke fikk verifisert.
 
@@ -1016,7 +1022,19 @@ fanger et *stort* fall, men ikke et lite eller et som skjer gradvis.
 
 Verifisert: `fields.geojson` inneholder ingen `gas_to_pipeline`-egenskap.
 
-Dette er sannsynligvis bevisst (den overlapper med tørrgass), men ingenting i koden sier det.
+**Dette er riktig oppførsel, ikke en feil** — men begrunnelsen manglet i koden og er nå skrevet
+inn (`etl/transform.py`, over `VALUE_FIELD_MAP`). Målt mot live siste periode (202606):
+
+```
+tørrgass 875.8 + assosiert 2029.3 = 2905.1 MMscf/d produsert
+gass til rørledning               = 2688.5 MMscf/d   (92,5 % av den samme gassen)
+```
+
+`GASPIPVOLM` er altså en nedstrøms disponering av gass som allerede er talt, ikke en femte
+produksjonsstrøm. Å ta den inn i totalene ville dobbelttalt. Den hentes likevel fordi den står i
+`validate.PRODUCTION_VALUE_FIELDS`: en negativ verdi der er en ekte kildefeil verdt å bryte
+bygget for, uansett om tallet publiseres.
+
 Ved reimplementering: ikke anta at alt i `OUT_FIELDS` er ment å havne i modellen.
 
 ### 11.3 `today_month_start` er en hardkodet dato
@@ -1033,8 +1051,15 @@ Verdien avgjør om en feltmåned uten aktivt egenkapitalintervall klassifiseres 
 eller `pre_equity_history` (`etl/equity_join_historical.py:118-141`). Etter hvert som ekte tid
 passerer 2026-09, vil intervaller som faktisk har startet fortsatt regnes som fremtidige.
 
-Dette er en tikkende feil. Den er sannsynligvis satt for determinisme i tester, men det er
-ingen kommentar som sier det, og ingen test som fanger at den er blitt foreldet.
+**RETTET 2026-09-13.** Standardverdien er nå `None`, og den faktiske måneden regnes ut ved
+kalltidspunktet (`date.today().replace(day=1)`). Tester som trenger et stabilt svar sender inn en
+eksplisitt dato.
+
+Vaktposten er `test_today_month_start_default_is_resolved_at_call_time_not_frozen`
+(`tests/test_equity_join_historical.py`), som asserterer på *signaturen* framfor på atferd: et
+frossent literal og den ekte klokken er uskillelige så lenge literalet tilfeldigvis navngir
+inneværende måned — nøyaktig vinduet der den opprinnelige feilen så riktig ut. En rent
+atferdsbasert test ville vært grønn i september 2026 uansett.
 
 ### 11.4 MURLACH — et enkeltfelt hardkodet i koden
 
@@ -1077,6 +1102,12 @@ hash». Importen på `docs/app/map.js:12-17` er en ren `import`-setning **uten**
 SRI finnes faktisk på MapLibre-**CSS** (`docs/index.html:10`) og på ECharts, som injiseres som
 `<script>` med `script.integrity` (`docs/app/charts.js:28`). Selve MapLibre-JS-en er upinnet mot
 innholdsendring, kun mot versjon.
+
+**RETTET 2026-09-13** — kommentaren sier nå hva som faktisk gjelder. Selve begrensningen består:
+en ES-modulimport *kan* ikke bære `integrity`, så versjonspinning er den eneste garantien der.
+Å innføre SRI ville krevd å laste biblioteket som et klassisk `<script>` i stedet, eller et
+import-map med integritet (ikke bredt støttet) — ikke gjort, siden det er en arkitekturendring,
+ikke en rettelse.
 
 ### 11.7 Polygonkonvertering håndterer ikke hull
 
@@ -1221,8 +1252,21 @@ Frontend-fixturen (`tests/frontend/fixtures/docs/data/licence_history.geojson`) 
 `episode_id: 1, 2, 3` hardkodet og går aldri gjennom ETL-en. Begge sider av grensesnittet er
 testet mot data som ikke ligner produksjonsdataene.
 
-**Rettelsen er én linje:** legg `"OBJECTID": "esriFieldTypeOID"` inn i `EXPECTED_FIELDS`. Jeg har
-ikke gjort den — oppgaven var å dokumentere, ikke endre kode.
+**RETTET 2026-09-13.** `"OBJECTID": "esriFieldTypeOID"` er lagt inn i `EXPECTED_FIELDS`, som både
+henter feltet (siden `OUT_FIELDS` utledes derfra) og skjemavaliderer det.
+
+To nye vakter i `tests/test_licence_history.py`:
+
+- `test_out_fields_requests_every_attribute_the_builders_read` — parser modulens egne
+  `attrs.get("NAVN")`-uttrykk og krever at hvert navn finnes i `OUT_FIELDS`. Dette er den
+  generelle invarianten, ikke bare et plaster på `OBJECTID`.
+- `test_episode_id_is_populated_from_a_row_shaped_like_the_real_query` — bygger radens
+  attributter **kun** fra `OUT_FIELDS`, slik den live spørringen faktisk returnerer, framfor å
+  injisere `OBJECTID` uavhengig. Den første versjonen jeg skrev injiserte det likevel og var
+  derfor ingen vakt; det er akkurat det blindpunktet som lot feilen gå gjennom.
+
+Begge er verifisert ved å reintrodusere feilen: begge slår ut, og går grønne igjen når den
+fjernes.
 
 ### 11.18 TODO-er
 

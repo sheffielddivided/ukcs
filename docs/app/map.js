@@ -2,11 +2,19 @@
 // markers, tooltips, operator filter only - no commodity toggle, region
 // select, period select or search yet).
 //
-// MapLibre GL JS, pinned version, loaded as an ES module from jsDelivr
-// with a verified SRI hash (spec section 2/10.1). OSM raster tiles, no
-// API key. The browser never calls any NSTA or ArcGIS host - the only
-// network calls this file makes are to the CDN (once, for the library)
-// and to OSM tile servers for basemap imagery.
+// MapLibre GL JS, pinned to an exact version, loaded as an ES module
+// from jsDelivr. NOTE: this import carries NO subresource-integrity
+// check - an ES module `import` cannot take an `integrity` attribute,
+// so pinning the version is the only guarantee here. SRI does cover the
+// two subresources that can take it: MapLibre's stylesheet (a <link
+// integrity=...> in index.html) and ECharts (injected as a <script> with
+// script.integrity, see charts.js). Stated explicitly because this
+// comment previously claimed an SRI hash the import does not and cannot
+// have.
+//
+// OSM raster tiles, no API key. The browser never calls any NSTA or
+// ArcGIS host - the only network calls this file makes are to the CDN
+// (once, for the library) and to OSM tile servers for basemap imagery.
 // maplibre-gl@6.8.0 ships only named exports (no default export) from its
 // ESM build - import the pieces this file actually uses.
 import {

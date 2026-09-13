@@ -11,12 +11,14 @@ episode's names).
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from etl.licence_history import (  # noqa: E402
+    OUT_FIELDS,
     LicenceHistoryError,
     build_history_entry,
     build_history_geojson,
@@ -202,3 +204,54 @@ def test_validate_source_names_retained_catches_a_blank_licensee_name():
         assert False, "expected LicenceHistoryError"
     except LicenceHistoryError as e:
         assert "1" in str(e)
+
+
+# --- OUT_FIELDS must actually request everything the builders read -------
+
+
+def test_out_fields_requests_every_attribute_the_builders_read():
+    """Regression guard for a real, shipped bug: `episode_id` was
+    published from `attrs.get("OBJECTID")`, but OBJECTID was absent from
+    EXPECTED_FIELDS - and OUT_FIELDS is derived from EXPECTED_FIELDS, so
+    the query never asked for it. `.get()` then returned None for every
+    row and all 8,886 published features carried `episode_id: null`,
+    silently breaking the frontend's per-episode selection.
+
+    The existing unit tests could not catch it because they construct
+    rows via `_row(object_id=...)`, which always supplies OBJECTID - they
+    test the builders against input the build never actually produces.
+    This test closes that gap at the source instead: every attribute name
+    the module reads must be a field the query requests."""
+    source = (
+        Path(__file__).resolve().parents[1] / "etl" / "licence_history.py"
+    ).read_text()
+    # Every `attrs.get("NAME")` / `attributes"].get("NAME")` in the module.
+    read_names = set(re.findall(r'(?:attrs|attributes"\])\.get\(\s*"([A-Z_]+)"', source))
+    assert read_names, "found no attribute reads - the pattern above has gone stale"
+
+    requested = set(OUT_FIELDS.split(","))
+    missing = sorted(read_names - requested)
+    assert not missing, (
+        f"licence_history.py reads {missing} from row attributes, but OUT_FIELDS "
+        f"never requests them, so they are always None at build time. "
+        f"Add them to EXPECTED_FIELDS."
+    )
+
+
+def test_episode_id_is_populated_from_a_row_shaped_like_the_real_query():
+    """The builders, driven by a row carrying exactly the attributes the
+    live query returns (OUT_FIELDS and nothing else) - not a hand-built
+    row that happens to include extras. episode_id must be a real id."""
+    # Built from OUT_FIELDS alone - a value exists only for a field the
+    # query actually asks for. Injecting OBJECTID unconditionally here is
+    # exactly the blind spot that let the original bug ship.
+    attributes = {name: None for name in OUT_FIELDS.split(",")}
+    if "OBJECTID" in attributes:
+        attributes["OBJECTID"] = 4242
+    attributes["HISTORY"] = "N"
+    rows = [{"attributes": attributes, "geometry": {"rings": [[[0, 0], [0, 1], [1, 1], [0, 0]]]}}]
+
+    geojson = build_history_geojson(rows)
+
+    assert len(geojson["features"]) == 1
+    assert geojson["features"][0]["properties"]["episode_id"] == 4242
