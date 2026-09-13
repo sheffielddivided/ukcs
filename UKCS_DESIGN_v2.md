@@ -2468,3 +2468,57 @@ accepted consequence: on the desktop Fields map view the map fills the viewport 
 captures the wheel, so the footer is reached with the scrollbar rather than a wheel over the map.
 The footer is incidental reference material, and the alternative — keeping it permanently on
 screen — is the thing being fixed.
+
+### 17.15 The 2013 boundary, explained in the UI (2026-09-13) — IMPLEMENTED
+
+Requested: "Forklar 2013-grensen i grensesnittet." A reader who picks the Production view's By
+company split sees history start in 2013 while the other two splits reach back to 1975, with no
+explanation on screen. A grep confirmed the gap: neither "2013" nor
+`equity_attributable_earliest_period` appeared anywhere in `docs/app/*.js` — the reason existed
+only in `methodology.html`, which a reader would have to go looking for.
+
+Two places show the boundary, so both now explain it, and both read the date from published
+metadata rather than a literal in the source:
+
+- **Production view** — a new `#production-period-note`, rendered directly under the chart (a
+  chart footnote belongs with its chart) and above the "Other" note. `renderPeriodNote(split)`
+  reads `equity_attributable_earliest_period` and `monthly_totals_earliest_period` from the
+  overview meta artifact `etl/overview.py` already publishes, and renders only for
+  `psplit=company`. It is reset to hidden at the top of every `refreshFromUrl()`, the same
+  discipline as the "Other" note, so a stale note never survives a split change.
+- **Equity company panel (Fields map)** — `equityStartNoteHtml(meta)` under `#equity-chart`,
+  from `equity/meta.json`'s `earliest_published_period` (written from
+  `etl/equity_config.py`'s `EQUITY_PUBLICATION_START`). It also says what the start is *not*:
+  the series begins at NSTA's earliest verified month, not necessarily at the company's first
+  production.
+
+Both render nothing when the value is absent, rather than asserting a boundary the build cannot
+substantiate. `formatPeriodMonthYear()` was added to `format.js` for the prose form ("March
+2013") — the existing `formatPeriod()` appends the raw period code, which suits a data readout
+but not a sentence.
+
+Tested in `tests/frontend/test_production_frontend.py`
+(`test_company_split_explains_why_its_history_starts_later`,
+`test_period_note_is_driven_by_published_metadata_not_a_hardcoded_date` — which serves altered
+coverage via `page.route` and asserts the sentence changes with it, so a hardcoded date fails —
+and `test_period_note_is_absent_from_the_splits_that_cover_the_full_history`), plus
+`test_equity_panel_explains_where_its_series_starts` in `test_equity_frontend.py`.
+
+### 17.16 README and ATTRIBUTION corrected (2026-09-13)
+
+Both files still described equity-attributable production as unbuilt future work. `README.md`
+said "Status: Phase 1 complete" and "Phase 2 will introduce equity-attributable production per
+company"; `ATTRIBUTION.md` listed the equity source as "(Phase 2, not yet built)". That work has
+been built, published and is the default metric in the UI.
+
+`README.md` was rewritten against the repository's own artifacts: the three views as they exist,
+verified counts (552 fields, 250 producing, 292 legal entities, 1975-06 to 2026-06), the gas
+conversion and its single-definition enforcement, and a known-limitations section listing the
+nine real, unmitigated gaps rather than the single one it carried before.
+
+`ATTRIBUTION.md` now lists all five NSTA datasets actually used, not two. One correction beyond
+the stale phase note: the PPRS companion polygon dataset (`b51887ab…`) was listed under "Data
+sources", implying it is used. It is inspected by `etl/discover.py` only and contributes to no
+published artifact — the rendered field polygons come from the field-determinations dataset
+(`bef8788b…`). The entry is kept, moved out of the source list and explicitly marked as not a
+source, so the distinction is not later mistaken for an omission.

@@ -15,7 +15,7 @@ import {
   getFieldEquity,
 } from "./equity.js";
 import { renderEquityStreamChart } from "./charts.js";
-import { formatPeriodShort } from "./format.js";
+import { formatPeriodShort, formatPeriodMonthYear } from "./format.js";
 import { setUrlState } from "./urlstate.js";
 
 function escapeHtml(value) {
@@ -147,6 +147,7 @@ async function renderEquityPanelBody(company, meta, { initialStreamIndex = 0 } =
       ).join("")}
     </div>
     <div id="equity-chart" class="chart-box"></div>
+    ${equityStartNoteHtml(meta)}
 
     <div class="panel-section-title">Contributing fields (${company.fields.length})</div>
     <div class="field-slug-list">${company.fields.map((f) => escapeHtml(f)).join(", ")}</div>
@@ -192,6 +193,20 @@ async function renderEquityPanelBody(company, meta, { initialStreamIndex = 0 } =
     btn.addEventListener("click", () => drawStream(Number(btn.dataset.streamIndex)));
   }
   drawStream(startIndex);
+}
+
+/* The equity series begins at NSTA's earliest verified month, not at the
+ * company's first production - the same boundary the Production view's
+ * company split hits, explained the same way and from the same published
+ * metadata (equity/meta.json's earliest_published_period, written by
+ * etl/equity_config.py's EQUITY_PUBLICATION_START). Renders nothing if
+ * the artifact does not carry the value. */
+function equityStartNoteHtml(meta) {
+  const start = meta?.earliest_published_period;
+  if (!start) return "";
+  return `<div class="equity-start-note">Series starts ${escapeHtml(formatPeriodMonthYear(start))}, ` +
+    `the earliest month with verified NSTA equity coverage - not necessarily this company's ` +
+    `first production.</div>`;
 }
 
 export async function openEquityPanel(companySlug, companyName, { onError, initialStreamIndex = 0 } = {}) {

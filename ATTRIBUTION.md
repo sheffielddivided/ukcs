@@ -6,15 +6,40 @@
 - Publisher: North Sea Transition Authority (NSTA)
 - Dataset: "UKCS hydrocarbon field production reports PPRS points (WGS84)"
 - ArcGIS Online item ID: `dd38204275a04618ab7ddd00f87224e3`
-- Companion polygon dataset item ID: `b51887ab2c8547cfb6807cca0ca5fb88`
 - Source: `https://www.nstauthority.co.uk/data-and-insights/data/themes/fields/`
 
-**NSTA Field Equity Shares** (Phase 2, not yet built)
+**NSTA Field Partners (field equity shares)**
 - Publisher: North Sea Transition Authority (NSTA)
+- Dataset: "Field Partners" — current and historical field equity shares
+- Workbook: `https://datanstauthority.blob.core.windows.net/external/Documents/field_partners.xlsx`
 - Source: `https://www.nstauthority.co.uk/data-and-insights/data/themes/fields/`
+- Each build records the workbook's sha256 and `Last-Modified` in `docs/data/equity/meta.json`.
 
-The resolved service URL, file hashes and last-modified timestamps for each build are recorded in
-`docs/data/meta.json` under `sources`.
+**UKCS petroleum field determinations (WGS84)** — authoritative field polygons
+- Publisher: North Sea Transition Authority (NSTA)
+- ArcGIS Online item ID: `bef8788b07464a7f8a18a18eb638b9f5`
+
+**UKCS offshore petroleum licence subareas by equity group holder (WGS84)**
+- Publisher: North Sea Transition Authority (NSTA)
+- ArcGIS Online item ID: `40c65d96a1a14da8b066f2abbb345fed`
+- Used for both the current licence portfolio and the current company-group taxonomy.
+
+**UKCS offshore petroleum licence blocks history (WGS84)**
+- Publisher: North Sea Transition Authority (NSTA)
+- ArcGIS Online item ID: `855237fb38bb44b2afc52a3ea4a48903`
+- Recorded historical licensee and operator names and dates. Carries no equity percentage, and
+  none is derived from it.
+
+PPRS publishes a companion polygon dataset (item ID
+`b51887ab2c8547cfb6807cca0ca5fb88`). It was inspected during discovery (`etl/discover.py`) but
+is **not** a source of any published artifact — the field polygons this site renders come from
+the field-determinations dataset listed above. It is recorded here so the distinction is not
+mistaken for an omission.
+
+Every URL above is resolved from its item ID at build time — none is hardcoded. The resolved
+service URL, item title, record count, file hashes and last-modified timestamps for each build
+are recorded in `docs/data/meta.json` under `sources`, so any published artifact set can be
+traced back to exactly what was served.
 
 ## Required attribution statement
 

@@ -460,6 +460,22 @@ header .subtitle {
   margin-top: 0.6rem;
 }
 
+/* Chart footnotes: provenance about the plot directly above, in muted
+   ink so they read as apparatus rather than competing with the data.
+   The period note sits first - it explains the axis the reader is
+   already looking at, before the "Other" note enumerates a bucket. */
+.production-period-note,
+.equity-start-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+  line-height: 1.5;
+}
+
+.equity-start-note {
+  margin-bottom: 0.75rem;
+}
+
 .production-other-note {
   font-size: 0.75rem;
   color: var(--text-muted);

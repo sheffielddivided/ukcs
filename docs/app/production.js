@@ -7,7 +7,7 @@
 
 import { getOverviewArtifact, DataLoadError } from "./state.js";
 import { renderProductionChart, disposeProductionChart, seriesPalette } from "./charts.js";
-import { formatPeriodShort, slugify } from "./format.js";
+import { formatPeriodShort, formatPeriodMonthYear, slugify } from "./format.js";
 import { parseUrlState, updateUrlState } from "./urlstate.js";
 
 // Must match etl/overview.py's UNRESOLVED_BUCKET_NAME exactly - the one
@@ -94,6 +94,7 @@ export async function initProductionView(container) {
       <div id="production-chart"></div>
       <div id="production-empty" class="production-empty" hidden>No data for selected filters</div>
     </div>
+    <div id="production-period-note" class="production-period-note" hidden></div>
     <div id="production-other-note" class="production-other-note" hidden></div>
     <div id="production-summary" class="sr-summary" aria-live="polite"></div>
     <div id="production-group-detail"></div>
@@ -209,6 +210,7 @@ export async function refreshFromUrl() {
   // no "Other" bucket at all (e.g. commodity, or Oil vs Gas category)
   // must never leave a stale note from the PREVIOUS render visible.
   document.getElementById("production-other-note").hidden = true;
+  renderPeriodNote(split);
 
   renderFreqToggle(state);
   renderFilters(split, state);
@@ -545,6 +547,35 @@ function toggleEmpty(isEmpty) {
 // handful, for the two company-level buckets) renders as a plain
 // sentence.
 const OTHER_NOTE_COLLAPSE_THRESHOLD = 15;
+
+/* Why the company split starts later than the other two.
+ *
+ * Company attribution is equity-derived, so it can only reach as far back
+ * as NSTA's equity records - the commodity and field splits read the full
+ * production history. Without this note a reader who picks "By company"
+ * just sees decades of history disappear with no explanation; the reason
+ * lived only in methodology.html, which they would have to go looking for.
+ *
+ * Both dates come from the overview meta artifact the ETL already
+ * publishes (etl/overview.py), never from a date written into this file:
+ * if the source coverage ever changes, the sentence changes with it. If
+ * either value is missing the note simply does not render, rather than
+ * asserting a boundary this build cannot substantiate. */
+function renderPeriodNote(split) {
+  const box = document.getElementById("production-period-note");
+  const equityStart = meta?.equity_attributable_earliest_period;
+  const totalsStart = meta?.monthly_totals_earliest_period;
+  if (split !== "company" || !equityStart || !totalsStart) {
+    box.hidden = true;
+    box.textContent = "";
+    return;
+  }
+  box.textContent =
+    `Company attribution starts ${formatPeriodMonthYear(equityStart)}, the earliest month ` +
+    `with verified NSTA equity coverage. The Liquids / Natural gas and By field splits cover ` +
+    `${formatPeriodMonthYear(totalsStart)} onward.`;
+  box.hidden = false;
+}
 
 function renderOtherNote(bucketLabel, names) {
   const box = document.getElementById("production-other-note");

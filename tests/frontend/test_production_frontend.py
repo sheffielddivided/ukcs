@@ -15,6 +15,7 @@ import json
 
 import pytest
 
+from conftest import FIXTURES_DIR
 from test_equity_frontend import assert_no_forbidden_requests
 
 
@@ -581,3 +582,74 @@ def test_legacy_deep_link_without_top_param_still_opens_fields_map(load_app):
     page.wait_for_timeout(300)
     assert page.locator("#layout").is_visible()
     assert page.locator("#view-production").is_hidden()
+
+
+# --- The 2013 boundary: why the company split starts later than the rest ---
+
+
+def test_company_split_explains_why_its_history_starts_later(load_app, page):
+    """Company attribution is equity-derived and cannot reach back
+    further than NSTA's equity records, so the By company split starts
+    years after the other two. Before this note the reason lived only in
+    methodology.html and a reader just saw history vanish."""
+    load_app("")
+    page.wait_for_selector("#production-stats details")
+    page.click('button[data-split="company"]')
+    page.wait_for_timeout(400)
+
+    note = page.locator("#production-period-note")
+    assert note.is_visible()
+    text = note.text_content()
+    # Both ends of the comparison: where company attribution starts, and
+    # what the other splits actually cover.
+    assert "January 2024" in text
+    assert "verified NSTA equity coverage" in text
+    assert "By field" in text
+
+
+def test_period_note_is_driven_by_published_metadata_not_a_hardcoded_date(load_app, page):
+    """The boundary is a property of the source data, not of this code.
+    Serving different coverage must change the sentence - a date written
+    into production.js would survive this and be wrong."""
+    meta = json.loads(
+        (FIXTURES_DIR / "docs" / "data" / "overview" / "meta.json").read_text()
+    )
+    meta["equity_attributable_earliest_period"] = "201303"
+    meta["monthly_totals_earliest_period"] = "197506"
+    page.route(
+        "**/data/overview/meta.json",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(meta)
+        ),
+    )
+
+    load_app("")
+    page.wait_for_selector("#production-stats details")
+    page.click('button[data-split="company"]')
+    page.wait_for_timeout(400)
+
+    text = page.locator("#production-period-note").text_content()
+    assert "March 2013" in text
+    assert "June 1975" in text
+    assert "2024" not in text
+
+
+def test_period_note_is_absent_from_the_splits_that_cover_the_full_history(load_app, page):
+    """Commodity and By field read the full production history, so the
+    note would be false there - and a stale note left over from a
+    previous render is exactly the bug renderPeriodNote() resets for."""
+    load_app("")
+    page.wait_for_selector("#production-stats details")
+    assert page.locator("#production-period-note").is_hidden()
+
+    page.click('button[data-split="company"]')
+    page.wait_for_timeout(400)
+    assert page.locator("#production-period-note").is_visible()
+
+    page.click('button[data-split="field"]')
+    page.wait_for_timeout(400)
+    assert page.locator("#production-period-note").is_hidden()
+
+    page.click('button[data-split="commodity"]')
+    page.wait_for_timeout(400)
+    assert page.locator("#production-period-note").is_hidden()

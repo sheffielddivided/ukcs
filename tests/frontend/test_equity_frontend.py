@@ -746,3 +746,21 @@ def test_stream_url_formatting_is_deterministic(load_app, page):
     # on the Fields map (see conftest.py); KEY_ORDER always writes `top`
     # first when present.
     assert second_url.endswith("#top=map&view=equity&slug=alpha-entity-limited&metric=equity&stream=dry-gas")
+
+
+# --- 10. Why the equity series starts where it does ---------------------
+
+
+def test_equity_panel_explains_where_its_series_starts(load_app, page):
+    """The series begins at NSTA's earliest verified equity month, which
+    is not the same thing as the company's first production - without
+    saying so, a short series reads as a claim about the company."""
+    load_app()
+    select_equity_company(page, "ALPHA ENTITY LIMITED")
+    page.wait_for_timeout(500)
+    note = page.locator(".equity-start-note")
+    assert note.is_visible()
+    text = note.text_content()
+    assert "March 2013" in text  # earliest_published_period in the fixture
+    assert "verified NSTA equity coverage" in text
+    assert "not necessarily this company's first production" in text

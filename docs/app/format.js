@@ -13,6 +13,16 @@ export function formatPeriod(period) {
   return `${MONTH_NAMES[month - 1]} ${year} (period ${period})`;
 }
 
+// "201303" -> "March 2013". formatPeriod() above appends the raw period
+// code, which is right for a data readout but noise inside a sentence -
+// this is the prose form, for notes a reader reads rather than scans.
+export function formatPeriodMonthYear(period) {
+  if (!/^\d{6}$/.test(period)) return period;
+  const year = period.slice(0, 4);
+  const month = parseInt(period.slice(4, 6), 10);
+  return `${MONTH_NAMES[month - 1]} ${year}`;
+}
+
 export function formatPeriodShort(period) {
   if (!/^\d{6}$/.test(period)) return period;
   const year = period.slice(0, 4);
