@@ -12,8 +12,10 @@ og linjenummer der det er relevant.
 **Rettelser etter første utgave:** tre av funnene i §11 er nå rettet i koden — `episode_id`
 (§11.17), `today_month_start` (§11.3) og SRI-kommentaren (§11.6). Et fjerde, `GASPIPVOLM`
 (§11.2), viste seg å være riktig oppførsel som bare manglet begrunnelse. Avsnittene er merket
-`RETTET 2026-09-13` og beholdt framfor å slettes: en søsterløsning som bygger det samme trenger
-å vite at fellen finnes, ikke bare at den er lukket her.
+`RETTET` og beholdt framfor å slettes: en søsterløsning som bygger det samme trenger å vite at
+fellen finnes, ikke bare at den er lukket her. En femte, i arbeidsflytens
+endringsdeteksjon (§11.18), ble funnet da en planlagt kjøring committet midt under skrivingen —
+også rettet.
 
 **Notasjon:** `USIKKER:` markerer noe jeg ikke fikk verifisert.
 
@@ -1364,11 +1366,44 @@ Konsekvenser: git-historikken for `docs/data/` blir umulig å lese som «når en
 faktisk», commit-meldingen påstår en egenkapital-oppdatering som ikke har skjedd, og hver
 kjøring utløser en unødvendig GitHub Pages-utrulling.
 
-**Rettelsen** er å behandle `equity/meta.json` som `overview/meta.json` allerede behandles:
-utelat den fra utløser-sjekken, og tilbakestill den sammen med de to andre meta-filene i
-hopp-over-grenen. **Ikke gjort i denne utgaven** — funnet ble gjort da en planlagt kjøring
-committet midt under skrivingen av dette dokumentet, og en endring i CI-atferd hører ikke hjemme
-i en dokumentasjonsendring.
+**RETTET 2026-09-14.** `docs/data/equity/meta.json` utelates nå fra katalog-diffen, og
+tilbakestilles sammen med de to andre meta-filene i hopp-over-grenen.
+
+Utelatelse alene ville vært halve rettelsen: `sha256` og `last_modified` bor i den samme filen og
+er ekte endringssignaler. Filen sammenlignes derfor separat med `built_at` fjernet — og kun
+`built_at`:
+
+```bash
+if ! git diff --quiet -- docs/data/equity ':(exclude)docs/data/equity/meta.json'; then
+  EQUITY_CHANGED=true
+fi
+equity_meta_beyond_built_at=$(python3 -c "… old.pop('built_at'); new.pop('built_at') …")
+if [ "$equity_meta_beyond_built_at" = true ]; then
+  EQUITY_CHANGED=true
+fi
+```
+
+Verifisert ved å hente ut `run`-blokka fra YAML-en og kjøre den mot et ekte repo i fire
+tilfeller:
+
+| Tilfelle | `equity_changed` | `changed` |
+|---|---|---|
+| Ekte egenkapitalverdi endret | `true` | `true` |
+| Kun `sha256` endret (ny arbeidsbok, identiske artefakter) | `true` | `true` |
+| Kun `last_modified` endret | `true` | `true` |
+| **Kun `built_at`** (regresjonstilfellet) | `false` | **`false`** |
+
+I det siste tilfellet ble alle tre meta-filene tilbakestilt og arbeidstreet var rent etterpå.
+
+Merk valget i rad tre: en `last_modified`-endring med identisk `sha256` utløser fortsatt en
+commit. Det er bevisst. Den registrerer sannferdig at NSTA serverte filen på nytt (§3.2), og
+historisk har det aldri gitt en tom commit — alle seks tomme commits over endret **kun**
+`built_at`, aldri `last_modified`.
+
+Tre vakter i `tests/test_build_workflow.py` asserterer mot arbeidsflytens kildetekst, ikke mot
+atferden. Det er med vilje: feilmodusen er en sjekk som alltid er sann, og en sjekk som alltid er
+sann består enhver atferdstest man kan skrive mot den. Begge de to første slår ut hvis feilen
+reintroduseres — verifisert. Testen innfører ingen ny avhengighet (ingen YAML-parser).
 
 ### 11.19 TODO-er
 

@@ -112,7 +112,35 @@ jobs:
           if ! git diff --quiet -- docs/data/fields.geojson docs/data/history docs/data/operators.json docs/data/operators; then
             PPRS_CHANGED=true
           fi
-          if ! git diff --quiet -- docs/data/equity; then
+          # docs/data/equity/meta.json carries its OWN built_at, which
+          # changes on every successful run exactly like the top-level
+          # meta.json's. A plain `git diff --quiet -- docs/data/equity`
+          # therefore never reports quiet, EQUITY_CHANGED is always true,
+          # and the "skip the commit" branch below is unreachable - which
+          # is how six content-free "data: refresh NSTA equity shares"
+          # commits reached main before this was noticed. The overview
+          # check just below already excluded its own meta file; this one
+          # did not.
+          #
+          # Everything EXCEPT that file is a plain diff. The file itself is
+          # compared with built_at removed, so sha256 and last_modified
+          # stay meaningful triggers (a genuinely different workbook, or a
+          # re-upload worth recording) while the fetch timestamp alone
+          # never is.
+          if ! git diff --quiet -- docs/data/equity ':(exclude)docs/data/equity/meta.json'; then
+            EQUITY_CHANGED=true
+          fi
+          equity_meta_beyond_built_at=$(python3 -c "
+          import json, subprocess
+          old = json.loads(subprocess.run(
+              ['git', 'show', 'HEAD:docs/data/equity/meta.json'],
+              capture_output=True, text=True).stdout)
+          new = json.load(open('docs/data/equity/meta.json'))
+          old.pop('built_at', None)
+          new.pop('built_at', None)
+          print('true' if old != new else 'false')
+          ")
+          if [ "$equity_meta_beyond_built_at" = true ]; then
             EQUITY_CHANGED=true
           fi
           # docs/data/overview/* is entirely DERIVED from the PPRS/equity
@@ -136,7 +164,7 @@ jobs:
           echo "equity_changed=$EQUITY_CHANGED" >> "$GITHUB_OUTPUT"
           if [ "$PPRS_CHANGED" = false ] && [ "$EQUITY_CHANGED" = false ] && [ "$OVERVIEW_CHANGED" = false ]; then
             echo "No substantive data change (only built_at would differ) - reverting meta.json, skipping commit."
-            git checkout -- docs/data/meta.json docs/data/overview/meta.json
+            git checkout -- docs/data/meta.json docs/data/overview/meta.json docs/data/equity/meta.json
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
