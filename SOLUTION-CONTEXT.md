@@ -6,8 +6,18 @@ Dokumentet er skrevet mot kildekoden, ikke mot `README.md` eller modul-kommentar
 kommentar påstår noe koden ikke gjør, står avviket beskrevet i §11. Alle påstander har filsti,
 og linjenummer der det er relevant.
 
-**Verifisert mot:** commit `3c1a1ac`, med to fulle ETL-løp mot live NSTA-tjenester 2026-09-13
-(83 og 77 sekunder, begge exit 0). Rådataeksempler er hentet live, ikke rekonstruert.
+**Verifisert mot:** commit `effd96a`, med fire fulle ETL-løp mot live NSTA-tjenester
+2026-09-13 og -14 (77–85 sekunder, alle exit 0). Rådataeksempler er hentet live, ikke
+rekonstruert.
+
+**Flyktige kontra strukturelle tall.** Tre av verdiene under er ferskvare og vil ha drevet når du
+leser dette: `built_at` (endres hvert bygg), og arbeidsbokens `sha256` og `last_modified` (NSTA
+laster opp på nytt daglig, 12:00:02 — se §3.2). Les dem live fra `docs/data/meta.json` og
+`docs/data/equity/meta.json` framfor herfra.
+
+Alt annet er strukturelt og har stått stille gjennom hvert bygg i verifiseringsperioden:
+radantall, entitetstall, dekningsprosenter, polygon- og egenkapitaltreff, filstørrelser og begge
+eksemplene i vedlegg A. Driver et av *dem*, er det en reell endring i kilden, ikke støy.
 
 **Rettelser etter første utgave:** tre av funnene i §11 er nå rettet i koden — `episode_id`
 (§11.17), `today_month_start` (§11.3) og SRI-kommentaren (§11.6). Et fjerde, `GASPIPVOLM`
@@ -169,18 +179,22 @@ søketekst og nedlastings-URL utledes på nytt hvert løp.
 I tillegg finnes en toleransesjekk på radantall: en endring større enn 10 % av forrige bygg
 bryter bygget (`EQUITY_ROW_COUNT_TOLERANCE_FRACTION = 0.10`, `etl/equity_config.py:44`).
 
-> **`Last-Modified` er ikke et innholdssignal for denne kilden.** Målt mellom to bygg
-> tre dager fra hverandre:
+> **`Last-Modified` er ikke et innholdssignal for denne kilden.** Målt over tre bygg:
 >
 > ```
 > 2026-09-10:  Last-Modified: Thu, 10 Sep 2026 12:00:02 GMT   sha256: bfd2acb1…0d13e80b
-> 2026-09-13:  Last-Modified: Sun, 13 Sep 2026 12:00:02 GMT   sha256: bfd2acb1…0d13e80b
+> 2026-09-13:  Last-Modified: Sun, 13 Sep 2026 12:00:02 GMT   sha256: bfd2acb1…0d13e80b   <- header flyttet, fil identisk
+> 2026-09-14:  Last-Modified: Mon, 14 Sep 2026 12:00:02 GMT   sha256: 6c2e232d…ced50e87   <- header flyttet, fil FAKTISK endret
 > ```
 >
-> Headeren flyttet seg, filen er byte-identisk. NSTA laster tilsynelatende opp den samme filen
-> på nytt med jevne mellomrom. En søsterløsning som betinger nedlasting eller ombygging på
-> `Last-Modified` (eller `If-Modified-Since`) vil tro at kilden endrer seg ukentlig når den ikke
-> gjør det. Bruk hashen — som denne pipelinen gjør.
+> Headeren flytter seg **hver dag**, klokken 12:00:02. Noen ganger følger innholdet med, andre
+> ganger ikke: 13. september var filen byte-identisk med 10. september, mens 14. september bar
+> ekte endringer — blant annet feltstatuser fra `700 - PRODUCING` til `900 - PRODUCTION CEASED`.
+>
+> `Last-Modified` kan altså ikke skille de to tilfellene fra hverandre. En søsterløsning som
+> betinger nedlasting eller ombygging på den headeren — eller bruker `If-Modified-Since` — vil
+> bygge om daglig uten grunn, og har ingen måte å vite når det faktisk var verdt det. Bruk
+> hashen, som denne pipelinen gjør.
 
 **Kolonnestabilitet:** `etl/equity_parse.py:41-58` forventer nøyaktig disse ti kolonnene i ark
 `"Report 1"`, i denne rekkefølgen:
@@ -423,7 +437,7 @@ Ett objekt. Byggemetadata, ikke produksjonsdata.
 | Nøkkel | Type | Eksempel |
 |---|---|---|
 | `artifact_schema_version` | int | `6` |
-| `built_at` | ISO8601 | `"2026-09-13T22:47:37Z"` |
+| `built_at` | ISO8601 | `"2026-09-14T23:00:25Z"` — flyktig, se innledningen |
 | `earliest_period`, `latest_period` | str YYYYMM | `"197506"`, `"202606"` |
 | `field_count`, `field_count_raw` | int | `250`, `250` |
 | `history_field_count` | int | `552` |
