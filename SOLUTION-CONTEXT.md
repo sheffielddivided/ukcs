@@ -6,8 +6,8 @@ Dokumentet er skrevet mot kildekoden, ikke mot `README.md` eller modul-kommentar
 kommentar påstår noe koden ikke gjør, står avviket beskrevet i §11. Alle påstander har filsti,
 og linjenummer der det er relevant.
 
-**Verifisert mot:** commit `c498dcd`, med et fullt ETL-løp kjørt mot live NSTA-tjenester
-2026-09-13 (83 sekunder, exit 0). Rådataeksempler er hentet live, ikke rekonstruert.
+**Verifisert mot:** commit `3c1a1ac`, med to fulle ETL-løp mot live NSTA-tjenester 2026-09-13
+(83 og 77 sekunder, begge exit 0). Rådataeksempler er hentet live, ikke rekonstruert.
 
 **Rettelser etter første utgave:** tre av funnene i §11 er nå rettet i koden — `episode_id`
 (§11.17), `today_month_start` (§11.3) og SRI-kommentaren (§11.6). Et fjerde, `GASPIPVOLM`
@@ -145,7 +145,7 @@ En skjema-hash (sha256 over feltnavn+typer) skrives til `docs/data/meta.json`
 | **URL** | `https://datanstauthority.blob.core.windows.net/external/Documents/field_partners.xlsx` |
 | **Størrelse** | 332 539 byte (målt 2026-09-13) |
 | **Autentisering** | Nei |
-| **Oppdateringsfrekvens** | Ukentlig (observert: `Last-Modified` endret seg fra `Thu, 10 Sep 2026 12:00:02 GMT` til `Sun, 13 Sep 2026 12:00:02 GMT` på tre dager) |
+| **Oppdateringsfrekvens** | Ukentlig — men se advarselen under om at `Last-Modified` ikke er et innholdssignal |
 
 **Dette er den skjøreste kilden.** URL-en er ikke publisert noe sted som en stabil lenke.
 Oppløsningskjeden er tre ledd (`etl/equity_fetch.py:69-185`):
@@ -166,6 +166,19 @@ søketekst og nedlastings-URL utledes på nytt hvert løp.
 **Endringsdeteksjon:** sha256 av arbeidsboken skrives til `docs/data/equity/meta.json`.
 I tillegg finnes en toleransesjekk på radantall: en endring større enn 10 % av forrige bygg
 bryter bygget (`EQUITY_ROW_COUNT_TOLERANCE_FRACTION = 0.10`, `etl/equity_config.py:44`).
+
+> **`Last-Modified` er ikke et innholdssignal for denne kilden.** Målt mellom to bygg
+> tre dager fra hverandre:
+>
+> ```
+> 2026-09-10:  Last-Modified: Thu, 10 Sep 2026 12:00:02 GMT   sha256: bfd2acb1…0d13e80b
+> 2026-09-13:  Last-Modified: Sun, 13 Sep 2026 12:00:02 GMT   sha256: bfd2acb1…0d13e80b
+> ```
+>
+> Headeren flyttet seg, filen er byte-identisk. NSTA laster tilsynelatende opp den samme filen
+> på nytt med jevne mellomrom. En søsterløsning som betinger nedlasting eller ombygging på
+> `Last-Modified` (eller `If-Modified-Since`) vil tro at kilden endrer seg ukentlig når den ikke
+> gjør det. Bruk hashen — som denne pipelinen gjør.
 
 **Kolonnestabilitet:** `etl/equity_parse.py:41-58` forventer nøyaktig disse ti kolonnene i ark
 `"Report 1"`, i denne rekkefølgen:
@@ -329,6 +342,38 @@ kilden. Denne løsningen unngår det ved å alltid hente alt — mulig fordi dat
 Det finnes **ingen** revisjonshistorikk eller endringslogg i artefaktene. Rettinger er kun
 synlige i git-historikken til `docs/data/`.
 
+**Spredningseffekten er større enn det reviderte feltet.** Et gjenoppbygg 2026-09-13 mot data fra
+2026-09-10 gir tallene:
+
+| Hva | Antall |
+|---|---|
+| PPRS-felt NSTA faktisk reviderte | **2** (ANDREW, 22 perioder; ARUNDEL, 4) |
+| Selskapsfiler under `equity/companies/` som endret seg | **170** av 292 |
+| …hvorav filer der en *verdi* endret seg | **5** |
+| …strøm-måneder der kun `coverage_pct` endret seg | **168** |
+
+Årsaken er at dekning måles **per periode for hele UKCS**, ikke per selskap
+(`etl/equity_artifacts.py:333` — `s = status_by_period_stream[period][stream]`). Når ANDREWs
+assosierte gass endres i 202306, endres den periodens resolved/total-brøk, og den nye
+`coverage_pct` skrives inn i *hver* aktiv juridisk enhets serie for den perioden. Et konkret
+eksempel fra `apache-north-sea-limited.json`, et selskap uten eierandel i ANDREW:
+
+```
+202306 natural_gas_mboed
+  før:  {"value": 0.471, "coverage_pct": 99.995, "status": "complete"}
+  nå:   {"value": 0.471, "coverage_pct": 99.996, "status": "complete"}
+```
+
+Verdien står stille; bare dekningen flytter seg. Konsekvenser for en sammenslått løsning:
+
+- **Diff-støy.** En liten kilderetting rører hundrevis av filer. Endringsdeteksjon som teller
+  endrede filer vil overvurdere hva som faktisk skjedde.
+- **Statusgrenser kan vippe.** `coverage_pct` avgjør `complete` / `warning` / `unavailable`
+  (§8.8). En retting i ett felt kan i prinsippet flytte et helt annet selskaps strøm-måned over
+  en terskel, og dermed endre om en verdi publiseres i det hele tatt.
+- **Ikke anta lokalitet.** «Felt X ble rettet» betyr ikke «bare felt X sine selskaper er
+  berørt».
+
 ### Endringsdeteksjon før commit
 
 `.github/workflows/build-data.yml:89-143`. PPRS og egenkapital diffes hver for seg, fordi NSTA
@@ -376,7 +421,7 @@ Ett objekt. Byggemetadata, ikke produksjonsdata.
 | Nøkkel | Type | Eksempel |
 |---|---|---|
 | `artifact_schema_version` | int | `6` |
-| `built_at` | ISO8601 | `"2026-09-10T15:43:08Z"` |
+| `built_at` | ISO8601 | `"2026-09-13T22:47:37Z"` |
 | `earliest_period`, `latest_period` | str YYYYMM | `"197506"`, `"202606"` |
 | `field_count`, `field_count_raw` | int | `250`, `250` |
 | `history_field_count` | int | `552` |
@@ -1268,7 +1313,64 @@ To nye vakter i `tests/test_licence_history.py`:
 Begge er verifisert ved å reintrodusere feilen: begge slår ut, og går grønne igjen når den
 fjernes.
 
-### 11.18 TODO-er
+Rettelsen er også nådd de **publiserte** dataene — en kodefiks alene ville latt
+`docs/data/licence_history.geojson` stå med `null` til neste planlagte bygg. Etter gjenoppbygg og
+utrulling har alle 8 886 features en unik `episode_id` (verifisert mot filen nettstedet faktisk
+serverer, ikke bare mot den lokale). Diffen rører ingenting annet: `episode_id` er den eneste
+endrede egenskapen, og ingen geometri flyttet seg.
+
+### 11.18 Den ukentlige jobben committer tomme datacommits hver gang
+
+`.github/workflows/build-data.yml:89-143` har eksplisitt logikk for å unngå dette. Kommentaren
+sier det selv:
+
+> meta.json's built_at changes on every successful build even when no upstream data changed […]
+> Check every OTHER artifact first; if none of them changed, the only difference is built_at, so
+> revert it and skip the commit entirely.
+
+Logikken virker ikke, fordi egenkapital-sjekken er:
+
+```bash
+if ! git diff --quiet -- docs/data/equity; then
+  EQUITY_CHANGED=true
+fi
+```
+
+`docs/data/equity/meta.json` bærer sin **egen** `built_at`, som endres hvert eneste løp. Diffen er
+derfor aldri stille, `EQUITY_CHANGED` er alltid `true`, og «hopp over commit»-grenen er
+uoppnåelig.
+
+Oversikt-sjekken rett under gjør det riktig og ekskluderer sin egen meta-fil:
+
+```bash
+overview_status="$(git status --porcelain -- docs/data/overview | grep -v 'docs/data/overview/meta\.json$' || true)"
+```
+
+Egenkapital-sjekken mangler den utelatelsen.
+
+**Målt i git-historikken.** Seks commits merket «data: refresh NSTA equity shares» endrer
+ingenting annet enn `built_at`:
+
+| Commit | Filer rørt | Felt endret utenom `built_at` |
+|---|---|---|
+| `f1f3b11` | `equity/meta.json`, `meta.json`, `overview/meta.json` | **0** |
+| `8a4fc35` | `equity/meta.json`, `meta.json` | **0** |
+| `adfe712` | `equity/meta.json`, `meta.json` | **0** |
+| `a976e08` | `equity/meta.json`, `meta.json` | **0** |
+| `5ef5cc6` | `equity/meta.json`, `meta.json` | **0** |
+| `a19ff10` | `equity/meta.json`, `meta.json` | **0** |
+
+Konsekvenser: git-historikken for `docs/data/` blir umulig å lese som «når endret dataene seg
+faktisk», commit-meldingen påstår en egenkapital-oppdatering som ikke har skjedd, og hver
+kjøring utløser en unødvendig GitHub Pages-utrulling.
+
+**Rettelsen** er å behandle `equity/meta.json` som `overview/meta.json` allerede behandles:
+utelat den fra utløser-sjekken, og tilbakestill den sammen med de to andre meta-filene i
+hopp-over-grenen. **Ikke gjort i denne utgaven** — funnet ble gjort da en planlagt kjøring
+committet midt under skrivingen av dette dokumentet, og en endring i CI-atferd hører ikke hjemme
+i en dokumentasjonsendring.
+
+### 11.19 TODO-er
 
 Verifisert: `grep -rn "TODO\|FIXME\|XXX\|HACK" etl/ docs/app/` gir **null treff**. Det finnes
 ingen TODO-er i koden.
