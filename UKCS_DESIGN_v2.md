@@ -2522,3 +2522,121 @@ sources", implying it is used. It is inspected by `etl/discover.py` only and con
 published artifact — the rendered field polygons come from the field-determinations dataset
 (`bef8788b…`). The entry is kept, moved out of the source list and explicitly marked as not a
 source, so the distinction is not later mistaken for an omission.
+
+### 17.17 SOLUTION-CONTEXT.md — cross-country merge reference (2026-09-13)
+
+This repository is to be merged with sister solutions for other countries into one application.
+`/SOLUTION-CONTEXT.md` is the handover document for that: enough for someone who has never seen
+the code to reimplement the data collection and understand the data model without reading the
+source. Twelve fixed sections (overview, stack, sources, collection, data model, units, geodata,
+business logic, frontend, volumes, pitfalls, licensing), plus real before/after data and a
+reimplementation checklist.
+
+Written against the source rather than against `README.md` or module docstrings, with a file path
+on every claim and a line number where it helps. Raw-data examples were fetched live from the
+PPRS service and the equity workbook, not reconstructed, and the same rows are shown after
+transformation. Full ETL runs against live NSTA services back the timing and volume figures.
+
+Two decisions worth keeping if the document is ever regenerated:
+
+- **Findings stay in even after they are fixed**, marked `RETTET`. A sister solution building the
+  same pipeline needs to know the trap exists, not only that it is closed here. Section 11 is the
+  document's longest for that reason.
+- **Volatile figures are separated from structural ones** in the introduction. `built_at` and the
+  workbook's `sha256`/`last_modified` drift constantly (§17.19); everything else held across every
+  build during verification. Without that separation the next reader finds a stale hash and cannot
+  tell routine drift from a real discrepancy.
+
+Writing it surfaced four defects in code that had passed every test. They are recorded in 17.18
+and 17.19 rather than only in that document, because they are decisions about this repository.
+
+### 17.18 Three defects found by reading the code against its own documentation (2026-09-13) — FIXED
+
+None of these had a failing test, because none of them could: each was a case where the code and
+its own comments disagreed, and the tests agreed with the code.
+
+**`episode_id` was `null` on all 8,886 licence-history features.** `build_history_geojson`
+publishes it from `attrs.get("OBJECTID")` (`etl/licence_history.py`), but `OBJECTID` was absent
+from that module's `EXPECTED_FIELDS` — and `OUT_FIELDS` is derived from `EXPECTED_FIELDS`, so the
+query never requested it and `.get()` returned `None` for every row. The frontend uses the field
+to select and filter a single historical episode (`docs/app/licence.js`, the click handler and
+`buildHistoryMapFilter`), so with every id null it could not isolate one. The docstring claimed
+the feature worked.
+
+The existing tests could not catch it: the unit test builds rows via `_row(object_id=...)`, which
+always supplies `OBJECTID`, and the frontend fixture hardcodes `episode_id: 1, 2, 3` and never
+goes through the ETL. **Both sides of the interface were tested against data the build does not
+produce** — the general lesson worth carrying to the sister solutions.
+
+Two guards close it: one asserting `OUT_FIELDS` requests every attribute the module reads (the
+invariant, not a patch for this one field), one driving the builders from a row shaped exactly as
+the live query returns. The first version of the second guard injected `OBJECTID` anyway and was
+no guard at all — the same blind spot that let the bug ship.
+
+**`today_month_start` was a frozen `date(2026, 9, 1)`** in `etl/equity_artifacts.py` and
+`etl/equity_join_historical.py`, never overridden by `build.py`. It decides `future_only` versus
+`pre_equity_history`, a split defined against real wall-clock time, so equity coverage that had
+since begun would keep being reported as still in the future once real time passed that month.
+Now `None`, resolved to the current month at call time.
+
+Its guard asserts on the *signature*, not on behaviour. A frozen literal and the real clock are
+indistinguishable while the literal names the current month — which is exactly the window in
+which the original looked correct. A behavioural test written that day would have been green.
+
+**The SRI comment in `docs/app/map.js` was false.** It claimed the MapLibre ES module import
+carries a verified subresource-integrity hash. An ES module `import` cannot take an `integrity`
+attribute. SRI does cover the MapLibre stylesheet (a `<link integrity=…>` in `index.html`) and
+ECharts (injected as a `<script>` with `script.integrity`). The comment now says what is true;
+the limitation itself stands, since fixing it would mean loading the library as a classic
+`<script>` — an architecture change, not a correction.
+
+**A fourth finding was not a defect.** `GASPIPVOLM` is fetched and range-checked but deliberately
+absent from `VALUE_FIELD_MAP`. Measured against the live latest period: dry 875.8 + associated
+2029.3 = 2905.1 MMscf/d produced, against 2688.5 MMscf/d to pipeline — 92.5% of the same gas,
+a downstream disposition rather than a fifth stream. Including it would double-count. It is still
+fetched because it is in `validate.PRODUCTION_VALUE_FIELDS`, where a negative value is worth
+failing the build over. Only the reasoning was missing; it now sits next to `VALUE_FIELD_MAP`.
+
+### 17.19 The weekly job's change detection never worked (2026-09-14) — FIXED
+
+`.github/workflows/build-data.yml` commits only when a rebuild produced a substantive data
+change, not merely a new `built_at`. Its own comment says so. The check was:
+
+```bash
+git diff --quiet -- docs/data/equity
+```
+
+`docs/data/equity/meta.json` carries its own `built_at`, which changes on every successful run.
+The diff was therefore never quiet, `EQUITY_CHANGED` was always true, and the skip branch was
+unreachable. Six commits labelled "data: refresh NSTA equity shares" reached `main` containing no
+change but `built_at` — `f1f3b11`, `8a4fc35`, `adfe712`, `a976e08`, `5ef5cc6`, `a19ff10`. The
+overview check immediately below already excluded its own meta file; this one did not.
+
+Excluding the file is only half the fix, because `sha256` and `last_modified` live in it too and
+are genuine signals. The directory is now diffed without it, and the file itself is compared with
+`built_at` — and only `built_at` — removed. The skip branch reverts it alongside the other two
+meta files; leaving it dirty would have let the following `git add docs/data` commit it anyway.
+
+A `last_modified` change with an unchanged `sha256` still commits. That is deliberate: it records
+that NSTA re-served the file, and historically it has never produced an empty commit — all six
+above changed `built_at` alone.
+
+Verified twice over. First by extracting the `run` block from the YAML and executing it against a
+real repository in four cases — a changed equity value, a changed `sha256`, a changed
+`last_modified`, and `built_at` alone; the first three commit, the fourth does not and leaves a
+clean tree. Then in production, by dispatching the workflow twice: the first run committed
+(NSTA had genuinely changed field statuses, `700 - PRODUCING` → `900 - PRODUCTION CEASED`, with a
+new `sha256`), and the second, minutes later with nothing changed, reported **Commit and push:
+skipped** — the first time that branch has ever been taken in this repository.
+
+`tests/test_build_workflow.py` asserts against the workflow source rather than its behaviour, on
+purpose: the failure mode is a check that is always true, and a check that is always true passes
+every behavioural test you can write against it. Two of the three fail if the bug is reintroduced.
+No YAML parser, so no new test dependency.
+
+**A source-stability finding fell out of this** (recorded in SOLUTION-CONTEXT §3.2). The equity
+workbook's `Last-Modified` moves every day at 12:00:02, but its content does not always follow:
+on 2026-09-13 the file was byte-identical to 2026-09-10 despite a new header, while on 2026-09-14
+the header moved *and* the content genuinely changed. `Last-Modified` cannot distinguish the two
+cases, so it is useless as a rebuild trigger in either direction. Only the hash can — which is
+what this pipeline already keys on.
