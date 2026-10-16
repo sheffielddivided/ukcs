@@ -34,6 +34,7 @@ import {
   fetchJson,
 } from "./state.js";
 import { parseUrlState, updateUrlState } from "./urlstate.js";
+import { onStyleReady } from "./map-ready.js";
 
 const SOURCE_ID = "licence-portfolio";
 const FILL_LAYER_ID = "licence-fill";
@@ -187,6 +188,7 @@ export async function refreshFromUrl() {
       showError(err);
       return;
     }
+    setPortfolioData();
     renderFilterInputs(state);
     renderActiveFilterChips(state);
     applyFilters(state);
@@ -220,6 +222,18 @@ export async function refreshFromUrl() {
 // shared `map` module variable.
 let ensureMapPromise = null;
 
+const EMPTY_FEATURE_COLLECTION = { type: "FeatureCollection", features: [] };
+
+/** Pushes the fetched portfolio GeoJSON into the map source. Safe to call
+ * repeatedly and before either side is ready: the source is created empty
+ * by ensureMap(), and this is the only thing that ever fills it, so the
+ * map and the fetch can complete in either order. */
+function setPortfolioData() {
+  if (!map || !portfolioGeojson) return;
+  const source = map.getSource(SOURCE_ID);
+  if (source) source.setData(portfolioGeojson);
+}
+
 function ensureMap() {
   if (ensureMapPromise) return ensureMapPromise;
   ensureMapPromise = new Promise((resolve) => {
@@ -245,8 +259,17 @@ function ensureMap() {
     map.addControl(new AttributionControl({ compact: false }));
     map.addControl(new NavigationControl(), "top-right");
 
-    map.on("load", () => {
-      map.addSource(SOURCE_ID, { type: "geojson", data: portfolioGeojson });
+    onStyleReady(map, () => {
+      // Added EMPTY, then filled by setPortfolioData() once the fetch
+      // resolves. ensureMap() is awaited BEFORE the portfolio GeoJSON is
+      // fetched (see the "current" branch of the mode switch above), so
+      // `portfolioGeojson` is normally still null at this point. The old
+      // code read it here anyway and got away with it only because it ran
+      // inside `map.on("load")`, which waits for the basemap tiles and so
+      // happened to be slower than the parallel fetch - a race it won by
+      // luck, and the same wait that made the whole view depend on a
+      // basemap it does not need.
+      map.addSource(SOURCE_ID, { type: "geojson", data: EMPTY_FEATURE_COLLECTION });
 
       map.addLayer({
         id: FILL_LAYER_ID,

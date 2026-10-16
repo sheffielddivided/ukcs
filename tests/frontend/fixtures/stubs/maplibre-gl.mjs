@@ -28,8 +28,19 @@ export class Map {
       div.className = "maplibregl-stub-canvas";
       container.appendChild(div);
     }
-    // Fire "load" asynchronously, like the real library does.
-    setTimeout(() => this._emit("load"), 0);
+    // Event order, asynchronously, as maplibre-gl 6.8.0 actually fires it:
+    // "style.load" once the style is usable for addSource/addLayer, then
+    // "load" once the style AND the first basemap tiles have arrived.
+    //
+    // The distinction is the whole point. When the basemap cannot be
+    // fetched the real library fires "style.load" and never "load", which
+    // is why the app hangs its layer creation on the former (see
+    // docs/app/map-ready.js). Set `window.__stubBasemapFails = true`
+    // before the map is constructed to model that case.
+    setTimeout(() => {
+      this._emit("style.load");
+      if (!window.__stubBasemapFails) this._emit("load");
+    }, 0);
     // Test-only hook (mirrors the echarts stub's window.__echartsCharts
     // pattern) so committed tests can reach the map instance map.js
     // creates internally, to simulate layer click/hover events.
@@ -72,7 +83,14 @@ export class Map {
   }
 
   addSource(id, source) {
-    this._sources[id] = source;
+    // A real GeoJSON source exposes setData(), which the app uses to fill
+    // a source that was created empty (licence.js's setPortfolioData).
+    // Storing the bare options object instead would make getSource(...)
+    // return something without that method, and the call would throw.
+    this._sources[id] =
+      source && source.type === "geojson"
+        ? { ...source, setData(data) { this.data = data; } }
+        : source;
   }
 
   getSource(id) {

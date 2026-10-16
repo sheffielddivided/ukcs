@@ -2640,3 +2640,54 @@ on 2026-09-13 the file was byte-identical to 2026-09-10 despite a new header, wh
 the header moved *and* the content genuinely changed. `Last-Modified` cannot distinguish the two
 cases, so it is useless as a rebuild trigger in either direction. Only the hash can — which is
 what this pipeline already keys on.
+
+### 17.20 Both maps lost their data when the basemap failed (2026-10-16) — FIXED
+
+Reported as "the Licence portfolio map does not show the licences". It affected the Fields map
+identically; the Licence view is simply where it was noticed.
+
+**Mechanism.** Both views added every source and layer inside `map.on("load", …)`. MapLibre fires
+`load` only once the style AND the first basemap tiles have arrived, so when
+`tile.openstreetmap.org` could not be reached — a network that blocks it, an ad blocker, a
+corporate proxy, OSM rate-limiting the reader's address — the handler never ran and the GeoJSON
+layers were never added at all. Nothing looked broken from the outside: `map.loaded()` and
+`map.isStyleLoaded()` both returned `true`, the map div and its controls rendered, and the style
+simply contained the `osm` layer and nothing else.
+
+Measured against maplibre-gl 6.8.0 by 404ing the tile URL:
+
+```
+tiles OK    styledata, style.load, sourcedata, sourcedata, styledata, load, idle
+tiles 404   styledata, style.load, sourcedata, sourcedata, styledata
+```
+
+`style.load` fires either way, and it is the point at which `addSource`/`addLayer` are legal.
+`docs/app/map-ready.js`'s `onStyleReady()` hangs on that instead, and both views use it. The
+basemap is decoration; the data is the product, and it now survives the basemap failing.
+
+**A second, masked defect surfaced in the fix.** `licence.js` awaits `ensureMap()` *before*
+fetching the portfolio GeoJSON, so `addSource(…, { data: portfolioGeojson })` always read `null`.
+It worked only because `map.on("load")` waited for tiles and so happened to be slower than the
+parallel fetch — a race the old code won by luck, and the same wait that caused the first defect
+was what concealed the second. Moving to `style.load` ran the callback early enough to expose it:
+the source was created with zero features and never filled.
+
+The source is now created empty and filled by `setPortfolioData()` once the fetch resolves, so
+map creation and data loading may complete in either order. The Fields map needed no equivalent
+change — `initMap()` receives its GeoJSON as already-awaited arguments, so no race exists there.
+
+**Why no test caught it.** The frontend suite runs against a hand-written maplibre stub
+(`tests/frontend/fixtures/stubs/maplibre-gl.mjs`) which fired only `load`, so it could not model
+the distinction the defect turns on. The stub now fires `style.load` then `load`, in the real
+order, and `window.__stubBasemapFails = true` makes it fire the former and never the latter.
+`tests/frontend/test_basemap_failure.py` asserts each view still adds its data layers under that
+condition, plus a source-level guard that neither module gates layer creation on `load` — the
+behavioural half is only as good as the stub, so the invariant is also asserted directly against
+the source. All three fail if the defect is reintroduced.
+
+**Reproduction note worth keeping.** The defect was not reproducible from the repository alone:
+the code and data were correct, and both maps rendered in a local rig across every viewport,
+both themes, both navigation paths and both licence sub-views. It only appeared once the basemap
+was made to fail — which happened by accident, when the rig's own placeholder tile was an invalid
+PNG. A sister solution that draws vector data over a third-party raster basemap has the same
+exposure, and the same test is worth having.

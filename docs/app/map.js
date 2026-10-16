@@ -23,6 +23,7 @@ import {
   NavigationControl,
   Popup,
 } from "https://cdn.jsdelivr.net/npm/maplibre-gl@6.8.0/dist/maplibre-gl.mjs";
+import { onStyleReady } from "./map-ready.js";
 
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
@@ -175,7 +176,7 @@ export function initMap(containerId, fieldsGeojsonRaw, onFieldClick, fieldPolygo
   map.addControl(new AttributionControl({ compact: false }));
   map.addControl(new NavigationControl(), "top-right");
 
-  map.on("load", () => {
+  onStyleReady(map, () => {
     map.addSource(SOURCE_ID, { type: "geojson", data: fieldsGeojson });
 
     // Circle markers are commodity-coloured dots, same as before - but
