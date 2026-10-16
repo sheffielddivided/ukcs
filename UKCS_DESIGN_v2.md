@@ -2665,12 +2665,13 @@ tiles 404   styledata, style.load, sourcedata, sourcedata, styledata
 `docs/app/map-ready.js`'s `onStyleReady()` hangs on that instead, and both views use it. The
 basemap is decoration; the data is the product, and it now survives the basemap failing.
 
-**A second, masked defect surfaced in the fix.** `licence.js` awaits `ensureMap()` *before*
-fetching the portfolio GeoJSON, so `addSource(…, { data: portfolioGeojson })` always read `null`.
-It worked only because `map.on("load")` waited for tiles and so happened to be slower than the
-parallel fetch — a race the old code won by luck, and the same wait that caused the first defect
-was what concealed the second. Moving to `style.load` ran the callback early enough to expose it:
-the source was created with zero features and never filled.
+**A second, masked defect surfaced in the fix.** `licence.js` calls `await ensureMap()` *before*
+fetching the portfolio GeoJSON, yet `addSource(…, { data: portfolioGeojson })` nevertheless read
+whatever the fetch had produced by then. The reason is §17.21: that `await` did not actually wait.
+The source was therefore created from `null` whenever the style became ready before the fetch
+resolved — which `map.on("load")` made unlikely, because it waits for basemap tiles, but never
+impossible. Moving to `style.load` removed that accidental delay and made the losing order the
+normal one, which is how the defect surfaced.
 
 The source is now created empty and filled by `setPortfolioData()` once the fetch resolves, so
 map creation and data loading may complete in either order. The Fields map needed no equivalent
@@ -2691,3 +2692,80 @@ both themes, both navigation paths and both licence sub-views. It only appeared 
 was made to fail — which happened by accident, when the rig's own placeholder tile was an invalid
 PNG. A sister solution that draws vector data over a third-party raster basemap has the same
 exposure, and the same test is worth having.
+
+
+### 17.21 The licence map's real root cause: `ensureMap()` never returned its promise (2026-10-16) — FIXED
+
+§17.20 was reported as "the map does not show the licences" and was fixed on the hypothesis that
+the basemap had failed. That hypothesis was wrong for the reporter's case: they confirmed the
+basemap **was** visible and only the licences were missing. The fix shipped in `ea727ee` did
+resolve their symptom, but through its second half, not its first — and the reasoning recorded
+for that second half was itself incomplete.
+
+**Actual mechanism.** `ensureMap()` memoized its promise but had no trailing
+`return ensureMapPromise;`:
+
+```js
+function ensureMap() {
+  if (ensureMapPromise) return ensureMapPromise;   // second and later callers
+  ensureMapPromise = new Promise((resolve) => { … });
+  // ← nothing returned: the FIRST caller gets undefined
+}
+```
+
+The first caller therefore received `undefined`, and `await undefined` continues on the next
+microtask. `refreshFromUrl()` did not wait for the map at all: it fell straight through to the
+GeoJSON fetch, and the source was created later, inside the map's own event handler, from
+whichever value `portfolioGeojson` happened to hold at that moment. Traced in the browser
+against real maplibre-gl 6.8.0 (first caller from `initLicenceView`, second from
+`main.js`'s `showTopView`):
+
+```
+176ms  refreshFromUrl enter            203ms  ensureMap awaited   ← before any resolve()
+209ms  fetch-start had=no              496ms  fetch-done n=1801
+602ms  refreshFromUrl enter (memoized) 842ms  addSource portfolioGeojson=SET(1801)
+847ms  load-handler done, resolving
+```
+
+So the view worked **only when the GeoJSON fetch beat the basemap tiles**. Which side wins is
+decided by the reader's browser cache, not by the code: a returning visitor with the OSM tiles
+already cached and the 1.4 MB portfolio GeoJSON not is exactly the losing case. That is why the
+map worked for months and then did not, and why it could not be reproduced on demand.
+
+**Measured, real browser, real maplibre, three orderings** (features rendered in `licence-fill`):
+
+| | tiles fast / GeoJSON slow | tiles slow / GeoJSON fast | tiles 404 |
+|---|---|---|---|
+| before `ea727ee` | **0** | 1114 | **0** |
+| `ea727ee` (shipped) | 1114 | 1114 | 1114 |
+| now | 1114 | 1114 | 1114 |
+
+The middle row is why the reporter sees it working again. The bottom row is the same behaviour
+made order-independent by construction rather than by the fetch happening to run second.
+
+**Fix.** `ensureMap()` returns its promise, so the first caller genuinely awaits the map before
+fetching. `setPortfolioData()` is additionally called inside the style-ready handler, so the
+handler is self-sufficient if a future caller already holds the GeoJSON — deliberately
+defensive; removing it fails no test, and the comment at `docs/app/licence.js` says so rather
+than implying coverage it does not have.
+
+**Tests.** `tests/frontend/test_basemap_failure.py` gains three. The stub takes a
+`window.__stubStyleDelayMs` hook so a test can choose which side of the race it exercises.
+- *style wins the race* — the portfolio GeoJSON is delayed 600 ms; **fails against the original
+  defect**, which is the one test here that reproduces the reported symptom.
+- *fetch wins the race* — the style is delayed instead. This order always worked, so it does not
+  fail against the original defect; it is kept so a future change made for one order cannot
+  quietly break the other.
+- *`ensureMap()` returns its memoized promise* — a source-level guard, since the missing return
+  is invisible to any behavioural test that has a second caller to fall back on.
+
+A repository-wide scan for the same shape (`if (xPromise) return xPromise;` without a trailing
+return) found three such factories — `charts.js`'s `loadEcharts()` and `licence.js`'s
+`ensureHistoryLayers()` were already correct; `ensureMap()` was the only offender.
+
+**Lesson for the sister solutions.** A `return`-less memoized promise factory is silent: every
+caller after the first behaves correctly, so the bug only ever affects the one caller that
+creates the resource, and only when a race it no longer waits for comes out the wrong way. It
+cost two wrong diagnoses here — first "the basemap failed", then "the await happens before the
+fetch, so the value is always null" — both of which fit the symptom and neither of which was
+the cause.

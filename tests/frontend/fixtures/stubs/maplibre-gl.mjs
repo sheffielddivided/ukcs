@@ -37,10 +37,15 @@ export class Map {
     // is why the app hangs its layer creation on the former (see
     // docs/app/map-ready.js). Set `window.__stubBasemapFails = true`
     // before the map is constructed to model that case.
+    // `window.__stubStyleDelayMs` holds the style back so a test can
+    // decide which side of the real race it is exercising: the data
+    // fetch finishing first (delay > fetch) or the style finishing
+    // first (the 0 default). Neither order may decide whether the
+    // reader sees polygons.
     setTimeout(() => {
       this._emit("style.load");
       if (!window.__stubBasemapFails) this._emit("load");
-    }, 0);
+    }, window.__stubStyleDelayMs || 0);
     // Test-only hook (mirrors the echarts stub's window.__echartsCharts
     // pattern) so committed tests can reach the map instance map.js
     // creates internally, to simulate layer click/hover events.

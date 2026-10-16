@@ -97,3 +97,88 @@ def test_no_map_view_gates_its_layers_on_the_load_event():
         f"layers they create vanish when it does not: {offenders}. "
         "Use onStyleReady() from docs/app/map-ready.js instead."
     )
+
+
+# ---------------------------------------------------------------------------
+# The race underneath the defect above
+# ---------------------------------------------------------------------------
+#
+# The licence view does two independent async things: it builds the map and
+# it fetches the portfolio GeoJSON. Whichever finishes second must be the
+# one that completes the picture, because which one wins is decided by the
+# reader's browser cache, not by the code - a visitor with the OSM tiles
+# already cached and the GeoJSON not is the fast-style case, and a first-
+# time visitor on a slow link is usually the other.
+#
+# The pre-fix code could only survive one order. It created the source from
+# `portfolioGeojson` at style time and never filled it afterwards, so with
+# the style ready first the source was built from `null`: a working basemap,
+# the full filter UI, and no licences on the map. That is the reported
+# symptom, and it is not the basemap failing - it is the basemap being
+# FASTER.
+
+
+def _portfolio_features(page):
+    """How many features the licence map's own source actually holds."""
+    return page.evaluate(
+        """() => {
+            const m = (window.__mapInstancesByContainer || {})["licence-map"];
+            if (!m) return null;
+            const src = m.getSource("licence-portfolio");
+            if (!src) return "no-source";
+            if (!src.data || !src.data.features) return 0;
+            return src.data.features.length;
+        }"""
+    )
+
+
+def test_licence_polygons_survive_the_style_winning_the_race(page, http_server):
+    """Style ready long before the GeoJSON arrives - the order that broke."""
+    page.route(
+        "**/licence_portfolio.geojson",
+        lambda route: (page.wait_for_timeout(600), route.continue_())[-1],
+    )
+    page.goto(http_server + "/index.html#top=licence", wait_until="load")
+    page.wait_for_timeout(2500)
+
+    count = _portfolio_features(page)
+    assert count not in (None, "no-source"), f"the licence source is missing: {count}"
+    assert count > 0, (
+        "the licence map's source is empty: the GeoJSON arrived after the "
+        "style was ready and nothing filled the source afterwards"
+    )
+
+
+def test_licence_polygons_survive_the_fetch_winning_the_race(page, http_server):
+    """GeoJSON in hand long before the style is ready - the other order.
+
+    This is the order that always worked, including before the fix, so it
+    does not fail against the original defect. It is here so that a future
+    change made for one order cannot quietly break the other: the pre-fix
+    code passed exactly this test while failing the one above."""
+    page.add_init_script("window.__stubStyleDelayMs = 600;")
+    page.goto(http_server + "/index.html#top=licence", wait_until="load")
+    page.wait_for_timeout(2500)
+
+    count = _portfolio_features(page)
+    assert count not in (None, "no-source"), f"the licence source is missing: {count}"
+    assert count > 0, (
+        "the licence map's source is empty: the style became ready after the "
+        "fetch and did not pick up the data already waiting for it"
+    )
+
+
+def test_ensure_map_returns_its_memoized_promise():
+    """`ensureMap()` returning undefined on its FIRST call is what let the
+    view run on past a map that did not exist yet, and what put the fetch
+    on the wrong side of the race to begin with. The memoized-return line
+    on the second call is not enough - the first caller is the one that
+    builds the map."""
+    source = (APP_DIR / "licence.js").read_text()
+    body = source[source.index("\nfunction ensureMap() {") :]
+    body = body[: body.index("\n}\n")]
+    assert "  return ensureMapPromise;" in body, (
+        "ensureMap() does not return its promise on the first call, so the "
+        "first caller's `await` resolves immediately and continues before "
+        "the map's style exists"
+    )

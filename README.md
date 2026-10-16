@@ -88,7 +88,7 @@ These are real and unmitigated. `docs/methodology.html` states them for the end 
   `etl/requirements.txt` plus pytest), then `python etl/build.py`.
 - `docs/` — the static site itself (GitHub Pages root). No build step, no bundler: the browser
   loads ES modules directly.
-- `tests/` — 386 tests. `tests/` covers the ETL; `tests/frontend/` drives the real frontend with
+- `tests/` — 403 tests. `tests/` covers the ETL; `tests/frontend/` drives the real frontend with
   Playwright against small offline fixtures. Run the frontend suite with
   `pip install -r tests/frontend/requirements.txt` first.
 - `.github/workflows/build-data.yml` — the weekly rebuild: tests → build → validate → commit only

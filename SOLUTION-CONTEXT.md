@@ -1424,6 +1424,45 @@ reintroduseres — verifisert. Testen innfører ingen ny avhengighet (ingen YAML
 Verifisert: `grep -rn "TODO\|FIXME\|XXX\|HACK" etl/ docs/app/` gir **null treff**. Det finnes
 ingen TODO-er i koden.
 
+### 11.20 Kartdata som hang på bakgrunnskartet, og et `return` som manglet
+
+Overførbart til søsterløsningene, som tegner vektordata over et tredjeparts rasterkart.
+
+**(a) `load` mot `style.load`.** Begge kartvisningene la til kilder og lag inne i
+`map.on("load", …)` (`docs/app/map.js`, `docs/app/licence.js`). MapLibre fyrer `load` først når
+stilen **og** de første bakgrunnsflisene er lastet, så når `tile.openstreetmap.org` ikke er
+nåbar, kjørte handleren aldri og GeoJSON-lagene ble aldri lagt til. Ingenting så galt ut:
+`map.loaded()` og `map.isStyleLoaded()` returnerte begge `true`. Målt mot maplibre-gl 6.8.0:
+
+```
+fliser OK    styledata, style.load, sourcedata, sourcedata, styledata, load, idle
+fliser 404   styledata, style.load, sourcedata, sourcedata, styledata
+```
+
+**RETTET 2026-10-16** — `docs/app/map-ready.js` (`onStyleReady()`) henger på `style.load`, som
+fyrer uansett og er punktet der `addSource`/`addLayer` er lovlige. Begge visningene bruker den.
+
+**(b) `ensureMap()` returnerte ikke løftet sitt.** `docs/app/licence.js` memoiserte løftet, men
+manglet avsluttende `return ensureMapPromise;`. Første kaller fikk `undefined`, og
+`await undefined` fortsetter umiddelbart — så `refreshFromUrl()` ventet i praksis ikke på kartet
+og hentet GeoJSON-en først. Kilden ble dermed opprettet fra `portfolioGeojson` slik den tilfeldig
+stod når stilhandleren kjørte: **tom hvis flisene kom før dataene**. Hvilken side som vinner
+avgjøres av leserens nettleser-cache, ikke av koden, så feilen var periodisk og ikke
+reproduserbar på kommando. Målte lag i `licence-fill`:
+
+| | fliser raske / GeoJSON treg | fliser trege / GeoJSON rask | fliser 404 |
+|---|---|---|---|
+| før rettelse | **0** | 1114 | **0** |
+| etter | 1114 | 1114 | 1114 |
+
+**RETTET 2026-10-16** — `ensureMap()` returnerer løftet; kilden opprettes tom og fylles av
+`setPortfolioData()`. Se `UKCS_DESIGN_v2.md` §17.20-§17.21 for full sporing.
+
+Et `return`-løst memoisert løftefabrikat er stille: alle kallere etter den første oppfører seg
+riktig, så feilen rammer bare den ene som oppretter ressursen. Søk etter mønsteret
+(`if (xPromise) return xPromise;` uten avsluttende `return`) før en sammenslåing; her fantes tre
+slike fabrikater, hvorav ett var feil.
+
 ---
 
 ## 12. Lisens og attribusjon

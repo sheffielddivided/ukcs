@@ -260,15 +260,17 @@ function ensureMap() {
     map.addControl(new NavigationControl(), "top-right");
 
     onStyleReady(map, () => {
-      // Added EMPTY, then filled by setPortfolioData() once the fetch
-      // resolves. ensureMap() is awaited BEFORE the portfolio GeoJSON is
-      // fetched (see the "current" branch of the mode switch above), so
-      // `portfolioGeojson` is normally still null at this point. The old
-      // code read it here anyway and got away with it only because it ran
-      // inside `map.on("load")`, which waits for the basemap tiles and so
-      // happened to be slower than the parallel fetch - a race it won by
-      // luck, and the same wait that made the whole view depend on a
-      // basemap it does not need.
+      // Added EMPTY and filled by setPortfolioData(), which runs on BOTH
+      // sides of the race: here, for the case where the fetch finished
+      // first, and again after the fetch, for the case where the style
+      // did. Neither order may decide whether the reader sees polygons.
+      //
+      // The old code read `portfolioGeojson` directly here and won that
+      // race only by luck: it ran inside `map.on("load")`, which waits
+      // for the basemap tiles and so was usually - not always - slower
+      // than the fetch. When the tiles were cached and the GeoJSON was
+      // not, the source was created from `null` and the map came up with
+      // a working basemap and no licences at all.
       map.addSource(SOURCE_ID, { type: "geojson", data: EMPTY_FEATURE_COLLECTION });
 
       map.addLayer({
@@ -319,9 +321,24 @@ function ensureMap() {
         renderDetail(props);
       });
 
+      // Defensive, and deliberately so: with the `return` below in
+      // place, refreshFromUrl() always awaits the map before it
+      // fetches, so the post-fetch setPortfolioData() is the call
+      // that actually fills the source and the one the tests cover.
+      // This makes the handler self-sufficient anyway, so a future
+      // caller that already holds the GeoJSON cannot reintroduce the
+      // empty-source defect. Removing it fails no test today.
+      setPortfolioData();
+
       resolve();
     });
   });
+
+  // Without this the FIRST caller gets `undefined` back and its `await`
+  // continues immediately, so it runs on ahead of a map that does not
+  // exist yet. That is how the pre-fix code came to fetch the GeoJSON
+  // before the source was created, and the defect above rode on it.
+  return ensureMapPromise;
 }
 
 function setCurrentLayersVisible(visible) {
