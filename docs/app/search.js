@@ -28,7 +28,19 @@ export function buildSearchIndex({ fields, legalEntities, operators }) {
 export function runSearch(index, query, limit = 20) {
   const q = query.trim().toLowerCase();
   if (!q) return [];
-  return index.filter((entry) => entry.label.toLowerCase().includes(q)).slice(0, limit);
+  // Rank rather than just filter: names that START with the query, then
+  // names with a word that does, then plain substring hits - so typing
+  // "cla" puts Clair ahead of "Nuclear..." instead of in index order.
+  const scored = [];
+  for (const entry of index) {
+    const label = entry.label.toLowerCase();
+    const at = label.indexOf(q);
+    if (at < 0) continue;
+    const rank = at === 0 ? 0 : /[\s\-(/]/.test(label[at - 1]) ? 1 : 2;
+    scored.push({ entry, rank });
+  }
+  scored.sort((a, b) => a.rank - b.rank || a.entry.label.length - b.entry.label.length || a.entry.label.localeCompare(b.entry.label));
+  return scored.slice(0, limit).map((r) => r.entry);
 }
 
 export function resultTypeLabel(type) {
@@ -58,7 +70,15 @@ export function attachSearchUI(inputEl, listEl, index, onSelect) {
       });
       listEl.appendChild(li);
     });
-    listEl.hidden = results.length === 0;
+    const q = inputEl.value.trim();
+    if (results.length === 0 && q) {
+      const li = document.createElement("li");
+      li.className = "search-empty";
+      li.setAttribute("role", "presentation");
+      li.textContent = `No fields, entities or operators match \u201c${q}\u201d`;
+      listEl.appendChild(li);
+    }
+    listEl.hidden = results.length === 0 && !q;
     inputEl.setAttribute("aria-expanded", String(results.length > 0));
     inputEl.setAttribute("aria-activedescendant", activeIndex >= 0 ? `search-result-${activeIndex}` : "");
   }

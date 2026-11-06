@@ -11,7 +11,7 @@
 import { initMap, filterByOperator, setLayerVisibility, setSelectedFieldPolygon, LAYERS } from "./map.js";
 import { renderHistoryCharts, renderFieldAnnualChart } from "./charts.js";
 import { DataLoadError, fetchJson, getFieldHistory, getOperatorHistory } from "./state.js";
-import { formatBuiltAt, formatPeriod, formatPeriodShort, slugify } from "./format.js";
+import { formatBuiltAt, formatPeriod, formatPeriodMonthYear, formatPeriodShort, slugify } from "./format.js";
 import { getEquityMeta, getEquityIndex, streamIndexFromUrlSlug } from "./equity.js";
 import { openEquityPanel, attachFieldOwnershipTab } from "./equity-ui.js";
 import { buildSearchIndex, attachSearchUI } from "./search.js";
@@ -44,6 +44,14 @@ function showEquityWarning(message) {
   banner.textContent = message;
   banner.classList.add("warning");
   banner.hidden = false;
+}
+
+function renderDataBadge(meta) {
+  const badge = document.getElementById("data-badge");
+  if (!badge || !meta?.latest_period) return;
+  badge.textContent = `Data to ${formatPeriodMonthYear(meta.latest_period)}`;
+  badge.title = `Site built ${formatBuiltAt(meta.built_at)}`;
+  badge.hidden = false;
 }
 
 function renderFooter(meta) {
@@ -262,7 +270,19 @@ async function openFieldPanel(fieldProps, updateUrl = true) {
 function closeFieldPanel() {
   document.getElementById("field-panel").hidden = true;
   setUrlState({});
+  if (ui.map) setSelectedFieldPolygon(ui.map, null);
 }
+
+// Escape closes the detail panel from anywhere on the map view - but never
+// steals the key from an open search dropdown or a text field being edited.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const panel = document.getElementById("field-panel");
+  if (!panel || panel.hidden) return;
+  const tag = document.activeElement?.tagName;
+  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+  closeFieldPanel();
+});
 
 const RETROSPECTIVE_CAVEAT =
   "Operator (as currently recorded by NSTA). This series attributes a field's " +
@@ -429,6 +449,7 @@ async function main() {
   ui.gasScfPerBoe = meta.gas_scf_per_boe;
 
   renderFooter(meta);
+  renderDataBadge(meta);
   console.debug(`history index loaded: ${Object.keys(historyIndex).length} fields`);
 
   for (const [slug, entry] of Object.entries(historyIndex)) {

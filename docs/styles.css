@@ -55,11 +55,16 @@
   --shadow-lg: 0 -8px 32px -8px rgba(11, 11, 11, 0.28);
 
   --header-h: auto;
+
+  --brand-bg: #14202e;
+  --brand-text: #ffffff;
+  --brand-muted: #a9b4c2;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
+    --brand-bg: #0a1018;
     --page-plane: #0d0d0d;
     --surface: #1a1a19;
     --surface-raised: #222221;
@@ -166,45 +171,135 @@ input[type="radio"] {
   height: 15px;
 }
 
-header {
-  padding: 0.7rem 1.25rem 0.6rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+/* Brand bar: a dark band in both colour schemes (as NCS Insight's branded
+   header), so the page has a clear identity and the light nav rail below it
+   reads as the working surface. Ink/neutral only - never a data hue. */
+.site-header {
+  background: var(--brand-bg);
+  color: var(--brand-text);
+}
+
+.site-header-inner {
+  max-width: 1480px;
+  margin-inline: auto;
+  padding: 0.8rem 1.25rem;
   display: flex;
   align-items: center;
-  column-gap: 0.85rem;
-  row-gap: 0.15rem;
+  gap: 0.85rem;
   flex-wrap: wrap;
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 8px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M5 25V15l5.5 4.5L16 8l5.5 9 5.5-4.5V25z' fill='%23eb6834'/%3E%3C/svg%3E") center / 24px no-repeat,
+    rgba(255, 255, 255, 0.1);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 header h1 {
-  font-size: 1.0625rem;
-  font-weight: 650;
+  font-size: 1.125rem;
+  font-weight: 700;
   letter-spacing: -0.015em;
+  line-height: 1.2;
   margin: 0;
   white-space: nowrap;
 }
 
 header .subtitle {
-  color: var(--text-muted);
+  color: var(--brand-muted);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.data-badge {
+  margin-left: auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--brand-text);
+  white-space: nowrap;
+}
+
+.data-badge::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 0.45rem;
+  border-radius: 50%;
+  background: #3ecf8e;
+}
+
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: -3rem;
+  z-index: 100;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-contrast);
   font-size: 0.8125rem;
-  padding-left: 0.85rem;
-  border-left: 1px solid var(--border);
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 0.5rem;
+}
+
+.noscript-banner {
+  padding: 0.75rem 1.25rem;
+  background: var(--error-bg);
+  color: var(--error-text);
+  font-size: 0.875rem;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 #top-nav {
-  display: flex;
-  gap: 0.15rem;
-  padding: 0.5rem 1.25rem;
+  position: sticky;
+  top: 0;
+  z-index: 15;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 
+.top-nav-inner {
+  max-width: 1480px;
+  margin-inline: auto;
+  display: flex;
+  gap: 0.15rem;
+  padding: 0.5rem 1.25rem;
+}
+
 /* Segmented control: the active segment is ink, not a data hue. */
 .top-nav-button {
-  padding: 0.4rem 0.85rem;
+  padding: 0.4rem 0.95rem;
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 500;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -253,13 +348,11 @@ header .subtitle {
      the bottom of the page reaches the footer. */
   flex: 1 0 auto;
   padding: 1.25rem;
-}
-
-/* Reading/working column: charts stop sprawling on ultrawide monitors. */
-#view-production > *,
-#view-licence > * {
-  max-width: 1280px;
-  margin-inline: auto;
+  /* Reading/working column: charts stop sprawling on ultrawide monitors.
+     Done as side padding rather than per-child auto margins, because a
+     child with its own `margin` (the licence map) silently fell out of the
+     centred column and sat flush left, misaligned with the tabs/filters. */
+  padding-inline: max(1.25rem, calc((100% - 1280px) / 2));
 }
 
 .production-stats {
@@ -916,11 +1009,11 @@ footer {
 }
 
 .header-methodology-link {
-  margin-left: auto;
+  margin-left: 0.25rem;
   font-size: 0.8125rem;
-  color: var(--text-secondary);
+  color: var(--brand-text);
   text-decoration: none;
-  border: 1px solid var(--border-strong);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 999px;
   padding: 0.25rem 0.8rem;
   white-space: nowrap;
@@ -928,8 +1021,12 @@ footer {
 
 .header-methodology-link:hover,
 .header-methodology-link:focus-visible {
-  color: var(--text-primary);
-  background: var(--surface-sunken);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.header-methodology-link:focus-visible,
+.site-header :focus-visible {
+  outline-color: #fff;
 }
 
 .methodology-link {
@@ -1238,36 +1335,39 @@ footer {
    --------------------------------------------------------------------------- */
 
 @media (max-width: 860px) {
-  header {
-    padding: 0.6rem 0.9rem;
-    row-gap: 0.2rem;
+  .site-header-inner {
+    padding: 0.65rem 0.9rem;
+    gap: 0.5rem 0.7rem;
   }
 
   header h1 {
     font-size: 1rem;
-    white-space: normal;
   }
 
   header .subtitle {
-    flex-basis: 100%;
-    padding-left: 0;
-    border-left: none;
-    font-size: 0.75rem;
-    order: 3;
+    display: none;
+  }
+
+  .brand {
+    flex: 1 1 100%;
+  }
+
+  .data-badge {
+    margin-left: 0;
   }
 
   .header-methodology-link {
-    order: 2;
+    margin-left: auto;
   }
 
   /* One scrolling rail rather than a wrapped pile of buttons. */
-  #top-nav {
+  .top-nav-inner {
     padding: 0.45rem 0.9rem;
     overflow-x: auto;
     scrollbar-width: none;
   }
 
-  #top-nav::-webkit-scrollbar {
+  .top-nav-inner::-webkit-scrollbar {
     display: none;
   }
 
@@ -1447,4 +1547,270 @@ footer {
     transition: none !important;
     animation: none !important;
   }
+}
+
+
+/* ---------------------------------------------------------------------------
+   Production view: KPI cards, segmented radios, presets, data table
+   --------------------------------------------------------------------------- */
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: 1.4fr repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 0.8rem 1rem 0.85rem;
+  min-width: 0;
+}
+
+.kpi-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.kpi-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-top: 0.2rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-primary .kpi-value {
+  font-size: 2.1rem;
+}
+
+.kpi-unit {
+  margin-left: 0.3rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0;
+}
+
+.kpi-sub {
+  min-height: 1.2em;
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.kpi-delta.up { color: #046504; }
+.kpi-delta.down { color: #a32424; }
+.kpi-delta.flat { color: var(--text-muted); }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .kpi-delta.up { color: #4ec44e; }
+  :root:not([data-theme="light"]) .kpi-delta.down { color: #f08a8a; }
+}
+
+@media (max-width: 860px) {
+  .kpi-row { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .kpi-primary,
+  .kpi-card:last-child { grid-column: 1 / -1; }
+  .kpi-value { font-size: 1.4rem; }
+  .kpi-primary .kpi-value { font-size: 1.8rem; }
+}
+
+/* Radio groups restyled as a segmented control. The real <input> stays in
+   the DOM, stretched invisibly over the whole segment, so keyboard, screen
+   reader and click behaviour are the native ones. */
+.seg-radio {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.seg-radio input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.seg-radio:hover { color: var(--text-primary); }
+
+.seg-radio:has(input:checked) {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+.seg-radio:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.seg-radio:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+
+.production-subcontrols:has(.seg-radio) {
+  gap: 0.1rem;
+  padding: 0.15rem;
+  background: var(--surface-sunken);
+  border-radius: 999px;
+}
+
+.preset-group {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-self: end;
+}
+
+.preset-btn {
+  font: inherit;
+  font-size: 0.8125rem;
+  min-height: 34px;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.preset-btn:hover { background: var(--surface-sunken); color: var(--text-primary); }
+
+.preset-btn[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+input[aria-invalid="true"] {
+  border-color: var(--error-border);
+  outline: 1px solid var(--error-border);
+}
+
+.filter-error {
+  flex: 1 1 100%;
+  font-size: 0.8125rem;
+  color: var(--error-text);
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.65rem;
+}
+
+.filter-error[hidden] { display: none; }
+
+.production-active-filters:not(:empty) {
+  color: var(--text-secondary);
+}
+
+.btn-secondary {
+  font: inherit;
+  font-size: 0.8125rem;
+  min-height: 34px;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.btn-secondary:hover { background: var(--surface-sunken); }
+
+.production-table-wrap {
+  margin-top: 1rem;
+  font-size: 0.8125rem;
+}
+
+.production-table-wrap[hidden] { display: none; }
+
+.production-table-wrap > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0.35rem 0;
+  font-weight: 500;
+}
+
+.production-table-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.4rem 0 0.6rem;
+}
+
+.production-table-hint { color: var(--text-muted); font-size: 0.75rem; }
+
+.table-scroll {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.table-scroll:empty { display: none; }
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.35rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+.data-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-sunken);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.data-table th.num,
+.data-table td.num { text-align: right; }
+
+.data-table tbody tr:hover { background: var(--surface-sunken); }
+
+.search-empty {
+  padding: 0.55rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+/* Gentle entrance so the chart/KPIs do not pop in. */
+.kpi-card { animation: rise 0.25s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+@media print {
+  .site-header, #top-nav, .production-controls, .production-filters, footer { display: none !important; }
 }

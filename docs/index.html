@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>UKCS Oil &amp; Gas Production Explorer</title>
+  <meta name="description" content="Interactive explorer of UK Continental Shelf oil and gas production, fields, company equity and licences, built on North Sea Transition Authority open data." />
+  <meta name="theme-color" content="#14202e" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314202e'/%3E%3Cpath d='M6 24V14l5 4 5-10 5 8 5-4v12z' fill='%23eb6834'/%3E%3C/svg%3E" />
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/maplibre-gl@6.8.0/dist/maplibre-gl.css"
@@ -13,26 +16,39 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <noscript><div class="noscript-banner">This explorer needs JavaScript to draw its charts and maps.</div></noscript>
   <!-- Everything above the footer. Sized to the viewport so the footer
        starts just past the fold: the source/attribution note is reference
        material, not chrome, so it is reached by scrolling to the bottom
        rather than permanently occupying a strip of every screen. -->
   <div id="shell">
-  <header>
-    <h1>UKCS Oil &amp; Gas Production Explorer</h1>
-    <span class="subtitle">North Sea Transition Authority open data &mdash; not an official NSTA product</span>
-    <a href="./methodology.html" class="header-methodology-link">Methodology</a>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div class="brand-text">
+          <h1>UKCS Insight</h1>
+          <span class="subtitle">Oil &amp; gas production explorer &middot; NSTA open data, not an official NSTA product</span>
+        </div>
+      </div>
+      <span id="data-badge" class="data-badge" hidden></span>
+      <a href="./methodology.html" class="header-methodology-link">Methodology</a>
+    </div>
   </header>
 
   <nav id="top-nav" aria-label="Main view">
-    <button type="button" id="top-nav-production" class="top-nav-button" aria-current="page">Production</button>
-    <button type="button" id="top-nav-map" class="top-nav-button">Fields map</button>
-    <button type="button" id="top-nav-licence" class="top-nav-button">Licence portfolio</button>
+    <div class="top-nav-inner">
+      <button type="button" id="top-nav-production" class="top-nav-button" aria-current="page">Production</button>
+      <button type="button" id="top-nav-map" class="top-nav-button">Fields map</button>
+      <button type="button" id="top-nav-licence" class="top-nav-button">Licence portfolio</button>
+    </div>
   </nav>
 
   <div id="status-banner" hidden></div>
   <div id="equity-status-banner" hidden></div>
 
+  <main id="main">
   <div id="view-production"></div>
 
   <div id="view-licence" hidden></div>
@@ -131,6 +147,7 @@
       </div>
     </aside>
   </div>
+  </main>
   </div><!-- /#shell -->
 
   <footer>
