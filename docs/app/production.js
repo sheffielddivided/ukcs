@@ -61,6 +61,10 @@ function rankByLatestTotal(entries, topN) {
 let root = null;
 let meta = null;
 let monthlyTotals = null;
+// What the chart currently shows, kept so the data table and CSV export
+// are always exactly the plotted numbers (never a second computation).
+let lastChart = null;
+let lastSplitLabel = "production";
 
 function el(html) {
   const div = document.createElement("div");
@@ -80,6 +84,7 @@ export async function initProductionView(container) {
   root = container;
   root.innerHTML = `
     <div id="production-error" class="panel-error" hidden></div>
+    <div id="production-kpis" class="kpi-row" aria-label="UKCS headline figures"></div>
     <div class="production-controls">
       <div id="production-split-tabs" class="production-tabs" role="tablist" aria-label="Production split mode"></div>
       <div id="production-freq-toggle" class="production-subcontrols"></div>
@@ -98,6 +103,14 @@ export async function initProductionView(container) {
     <div id="production-other-note" class="production-other-note" hidden></div>
     <div id="production-summary" class="sr-summary" aria-live="polite"></div>
     <div id="production-group-detail"></div>
+    <details id="production-table" class="production-table-wrap">
+      <summary>Data table</summary>
+      <div class="production-table-actions">
+        <button type="button" id="production-csv" class="btn-secondary">Download CSV</button>
+        <span class="production-table-hint">Exactly the values plotted above (mboe/d).</span>
+      </div>
+      <div id="production-table-body" class="table-scroll"></div>
+    </details>
     <!-- Grouping coverage is provenance, not the headline: it sits below
          the chart so the chart is the first thing on screen (on a phone it
          was pushing the plot most of a screen down). -->
@@ -115,8 +128,83 @@ export async function initProductionView(container) {
   }
 
   renderStats();
+  renderKpis();
   renderSplitTabs();
+  document.getElementById("production-csv").addEventListener("click", downloadCsv);
+  document.getElementById("production-table").addEventListener("toggle", renderDataTable);
+  // Charts read colours from the stylesheet tokens at render time, so a
+  // system light/dark switch needs a redraw or the plot keeps stale colours.
+  window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", () => refreshFromUrl());
   await refreshFromUrl();
+}
+
+// ---------------------------------------------------------------------------
+// Headline KPI cards (UKCS-wide, deliberately independent of the filters)
+// ---------------------------------------------------------------------------
+
+const nf0 = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 });
+
+function fmtMboed(v) {
+  return v == null ? "n/a" : v >= 100 ? nf0.format(v) : nf1.format(v);
+}
+
+function deltaBadge(now, before) {
+  if (now == null || before == null || before === 0) return "";
+  const pct = ((now - before) / before) * 100;
+  const cls = pct > 0.05 ? "up" : pct < -0.05 ? "down" : "flat";
+  const arrow = pct > 0.05 ? "\u25B2" : pct < -0.05 ? "\u25BC" : "\u25AC";
+  return `<span class="kpi-delta ${cls}">${arrow} ${nf1.format(Math.abs(pct))}% vs same month last year</span>`;
+}
+
+function renderKpis() {
+  const box = document.getElementById("production-kpis");
+  if (!box || !monthlyTotals?.length) return;
+  const latest = monthlyTotals[monthlyTotals.length - 1];
+  const yearAgoPeriod = `${Number(latest.period.slice(0, 4)) - 1}${latest.period.slice(4)}`;
+  const yearAgo = monthlyTotals.find((p) => p.period === yearAgoPeriod);
+  const share = (v) => (latest.total_mboed ? `${nf0.format((v / latest.total_mboed) * 100)}% of total` : "");
+
+  // Peak calendar year by annual average - only complete years qualify, so a
+  // partial year can never be crowned peak by a lucky run of months.
+  const byYear = new Map();
+  for (const p of monthlyTotals) {
+    if (p.total_mboed == null) continue;
+    const y = p.period.slice(0, 4);
+    const e = byYear.get(y) || { sum: 0, n: 0 };
+    e.sum += p.total_mboed;
+    e.n += 1;
+    byYear.set(y, e);
+  }
+  let peak = null;
+  for (const [y, e] of byYear) {
+    if (e.n < 12) continue;
+    const avg = e.sum / e.n;
+    if (!peak || avg > peak.avg) peak = { year: y, avg };
+  }
+
+  box.innerHTML = `
+    <div class="kpi-card kpi-primary">
+      <div class="kpi-label">Total production, ${escapeHtml(formatPeriodMonthYear(latest.period))}</div>
+      <div class="kpi-value">${fmtMboed(latest.total_mboed)}<span class="kpi-unit">mboe/d</span></div>
+      <div class="kpi-sub">${deltaBadge(latest.total_mboed, yearAgo?.total_mboed)}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label"><span class="legend-swatch" style="background:var(--series-1)"></span>Liquids</div>
+      <div class="kpi-value">${fmtMboed(latest.liquids_mboed)}<span class="kpi-unit">mboe/d</span></div>
+      <div class="kpi-sub">${share(latest.liquids_mboed)}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label"><span class="legend-swatch" style="background:var(--series-2)"></span>Natural gas</div>
+      <div class="kpi-value">${fmtMboed(latest.natural_gas_mboed)}<span class="kpi-unit">mboe/d</span></div>
+      <div class="kpi-sub">${share(latest.natural_gas_mboed)}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Peak year (annual average)</div>
+      <div class="kpi-value">${peak ? escapeHtml(peak.year) : "n/a"}</div>
+      <div class="kpi-sub">${peak ? `${fmtMboed(peak.avg)} mboe/d \u00b7 now ${nf0.format((latest.total_mboed / peak.avg) * 100)}% of peak` : ""}</div>
+    </div>
+  `;
 }
 
 function showError(err) {
@@ -190,11 +278,35 @@ function renderSplitTabs() {
 // any control change or browser back/forward navigation.
 // ---------------------------------------------------------------------------
 
+// Control changes fire refreshes faster than the chart can draw (ECharts is
+// lazy-loaded, artifacts are fetched on first use). Without serialising, an
+// older, slower render could finish AFTER a newer one and leave the chart
+// showing a state that no longer matches the controls or the URL. Only the
+// most recent request runs; any it superseded are dropped.
+let refreshSeq = 0;
+let refreshRunning = null;
+
 export async function refreshFromUrl() {
+  const seq = ++refreshSeq;
+  while (refreshRunning) {
+    await refreshRunning.catch(() => {});
+    if (seq !== refreshSeq) return;
+  }
+  if (seq !== refreshSeq) return;
+  refreshRunning = doRefresh();
+  try {
+    await refreshRunning;
+  } finally {
+    refreshRunning = null;
+  }
+}
+
+async function doRefresh() {
   if (!root || !meta) return;
   clearError();
   const state = parseUrlState();
   const split = state.psplit || "commodity";
+  lastSplitLabel = `${split}-${state.pfreq === "monthly" ? "monthly" : "annual"}-mboed`;
   highlightActiveTab(split);
 
   document.getElementById("production-grain-toggle").hidden = split !== "company";
@@ -246,26 +358,67 @@ function renderFilters(split, state) {
     wireTopN();
   }
 
+  const latestPeriod = monthlyTotals?.[monthlyTotals.length - 1]?.period;
+  const latestYear = latestPeriod ? Number(latestPeriod.slice(0, 4)) : null;
+  const presets = latestYear
+    ? [["5 y", 5], ["10 y", 10], ["25 y", 25]].map(([label, n]) => ({ label, from: `${latestYear - n + 1}01` }))
+    : [];
+  presets.push({ label: "All", from: null });
+
   box.innerHTML = `
-    <label>From <input type="text" id="pf-from" value="${escapeHtml(state.pfrom || "")}" placeholder="YYYYMM" size="7" /></label>
-    <label>To <input type="text" id="pf-to" value="${escapeHtml(state.pto || "")}" placeholder="YYYYMM" size="7" /></label>
+    <label>From <input type="text" id="pf-from" inputmode="numeric" value="${escapeHtml(state.pfrom || "")}" placeholder="YYYYMM" size="7" aria-describedby="pf-error" /></label>
+    <label>To <input type="text" id="pf-to" inputmode="numeric" value="${escapeHtml(state.pto || "")}" placeholder="YYYYMM" size="7" aria-describedby="pf-error" /></label>
+    <div class="preset-group" role="group" aria-label="Quick date range">
+      ${presets
+        .map((pr) => `<button type="button" class="preset-btn" data-from="${pr.from ?? ""}" aria-pressed="${(pr.from ?? "") === (state.pfrom || "") && !state.pto}">${pr.label}</button>`)
+        .join("")}
+    </div>
     ${split === "field" ? `<label>Field status
       <select id="pf-status">
         <option value="" ${!state.pstatus ? "selected" : ""}>All</option>
-        <option value="current" ${state.pstatus === "current" ? "selected" : ""}>Current</option>
-        <option value="historical" ${state.pstatus === "historical" ? "selected" : ""}>Historical</option>
+        <option value="current" ${state.pstatus === "current" ? "selected" : ""}>Producing now</option>
+        <option value="historical" ${state.pstatus === "historical" ? "selected" : ""}>No longer producing</option>
       </select>
     </label>` : ""}
     <button type="button" id="pf-clear">Clear filters</button>
+    <div id="pf-error" class="filter-error" role="alert" hidden></div>
   `;
-  document.getElementById("pf-from").addEventListener("change", (e) => {
-    updateUrlState({ pfrom: e.target.value.trim() || null });
+
+  const errBox = document.getElementById("pf-error");
+  const commit = (key, input) => {
+    const raw = input.value.trim();
+    if (!raw) {
+      errBox.hidden = true;
+      input.removeAttribute("aria-invalid");
+      updateUrlState({ [key]: null });
+      refreshFromUrl();
+      return;
+    }
+    const norm = normalisePeriod(raw, key === "pfrom" ? "start" : "end");
+    const other = parseUrlState()[key === "pfrom" ? "pto" : "pfrom"];
+    let problem = null;
+    if (!norm) problem = `\u201c${raw}\u201d is not a month. Use YYYYMM, YYYY-MM or a year (e.g. 202401, 2024-01, 2024).`;
+    else if (other && (key === "pfrom" ? norm > other : norm < other)) problem = "The start month must not be after the end month.";
+    if (problem) {
+      errBox.textContent = problem;
+      errBox.hidden = false;
+      input.setAttribute("aria-invalid", "true");
+      return;
+    }
+    errBox.hidden = true;
+    input.removeAttribute("aria-invalid");
+    input.value = norm;
+    updateUrlState({ [key]: norm });
     refreshFromUrl();
-  });
-  document.getElementById("pf-to").addEventListener("change", (e) => {
-    updateUrlState({ pto: e.target.value.trim() || null });
-    refreshFromUrl();
-  });
+  };
+  document.getElementById("pf-from").addEventListener("change", (e) => commit("pfrom", e.target));
+  document.getElementById("pf-to").addEventListener("change", (e) => commit("pto", e.target));
+  for (const btn of box.querySelectorAll(".preset-btn")) {
+    btn.addEventListener("click", () => {
+      updateUrlState({ pfrom: btn.dataset.from || null, pto: null });
+      refreshFromUrl();
+    });
+  }
   const statusEl = document.getElementById("pf-status");
   if (statusEl) {
     statusEl.addEventListener("change", (e) => {
@@ -281,6 +434,22 @@ function renderFilters(split, state) {
   });
 }
 
+// Accepts YYYYMM, YYYY-MM, YYYY/MM, or a bare year (start -> January,
+// end -> December). Returns canonical YYYYMM, or null when it is not a real
+// month. A typo used to be stored verbatim and simply produced an empty
+// chart with no hint as to why.
+function normalisePeriod(raw, edge) {
+  const t = String(raw).trim();
+  let m = /^(\d{4})[-\/ ]?(\d{2})$/.exec(t);
+  if (m) {
+    const mo = Number(m[2]);
+    return mo >= 1 && mo <= 12 ? `${m[1]}${m[2]}` : null;
+  }
+  m = /^(\d{4})$/.exec(t);
+  if (m) return `${m[1]}${edge === "start" ? "01" : "12"}`;
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Monthly / annual-average frequency toggle (applies to every split mode)
 // ---------------------------------------------------------------------------
@@ -294,8 +463,8 @@ function renderFreqToggle(state) {
   const box = document.getElementById("production-freq-toggle");
   const freq = state.pfreq === "monthly" ? "monthly" : "annual";
   box.innerHTML = `
-    <label><input type="radio" name="pfreq" value="monthly" ${freq === "monthly" ? "checked" : ""} /> Monthly</label>
-    <label><input type="radio" name="pfreq" value="annual" ${freq === "annual" ? "checked" : ""} /> Annual average</label>
+    <label class="seg-radio"><input type="radio" name="pfreq" value="monthly" ${freq === "monthly" ? "checked" : ""} /><span>Monthly</span></label>
+    <label class="seg-radio"><input type="radio" name="pfreq" value="annual" ${freq === "annual" ? "checked" : ""} /><span>Annual average</span></label>
   `;
   for (const radio of box.querySelectorAll('input[name="pfreq"]')) {
     radio.addEventListener("change", (e) => {
@@ -350,8 +519,8 @@ function aggregateSeriesAnnual(periods, data) {
 function grainToggleHtml(state) {
   const grain = state.pgrain || "group";
   return `
-    <label><input type="radio" name="pgrain" value="group" ${grain === "group" ? "checked" : ""} /> Current company group</label>
-    <label><input type="radio" name="pgrain" value="entity" ${grain === "entity" ? "checked" : ""} /> Legal entity as recorded by NSTA</label>
+    <label class="seg-radio"><input type="radio" name="pgrain" value="group" ${grain === "group" ? "checked" : ""} /><span>Current company group</span></label>
+    <label class="seg-radio"><input type="radio" name="pgrain" value="entity" ${grain === "entity" ? "checked" : ""} /><span>Legal entity as recorded by NSTA</span></label>
   `;
 }
 
@@ -382,8 +551,8 @@ function renderCategoryToggle(state, fieldBreakdownAvailable) {
   box.hidden = false;
   const cat = fieldBreakdownAvailable && state.pcat === "commodity" ? "commodity" : fieldBreakdownAvailable ? "field" : "commodity";
   box.innerHTML = `
-    <label><input type="radio" name="pcat" value="commodity" ${cat === "commodity" ? "checked" : ""} /> Oil vs Gas</label>
-    <label><input type="radio" name="pcat" value="field" ${cat === "field" ? "checked" : ""} ${fieldBreakdownAvailable ? "" : "disabled"} /> By field</label>
+    <label class="seg-radio"><input type="radio" name="pcat" value="commodity" ${cat === "commodity" ? "checked" : ""} /><span>Oil vs Gas</span></label>
+    <label class="seg-radio"><input type="radio" name="pcat" value="field" ${cat === "field" ? "checked" : ""} ${fieldBreakdownAvailable ? "" : "disabled"} /><span>By field</span></label>
   `;
   for (const radio of box.querySelectorAll('input[name="pcat"]')) {
     radio.addEventListener("change", (e) => {
@@ -469,7 +638,7 @@ function renderActiveFilterChips(state) {
   if (state.pcat === "commodity") chips.push("Oil vs Gas");
   if (state.pfrom) chips.push(`From ${state.pfrom}`);
   if (state.pto) chips.push(`To ${state.pto}`);
-  if (state.pstatus) chips.push(`Status: ${state.pstatus}`);
+  if (state.pstatus) chips.push(`Status: ${state.pstatus === "current" ? "producing now" : state.pstatus === "historical" ? "no longer producing" : state.pstatus}`);
   if (state.pgroup) chips.push(`Selected: ${state.pgroup}`);
   if (state.pfields) chips.push(`Fields: ${state.pfields.split(",").length} selected`);
   box.textContent = chips.length ? `Active filters: ${chips.join(", ")}` : "";
@@ -505,7 +674,7 @@ async function renderCommoditySplit(state) {
     ? aggregateSeriesAnnual(monthlyPeriods, points.map((p) => p.total_mboed))
     : points.map((p) => p.total_mboed);
 
-  await renderProductionChart(
+  await drawChart(
     document.getElementById("production-chart"),
     periods,
     [
@@ -520,8 +689,21 @@ async function renderCommoditySplit(state) {
   document.getElementById("production-summary").textContent =
     `Latest period ${latest.period}: Liquids ${latest.liquids_mboed} mboe/d, ` +
     `Natural gas ${latest.natural_gas_mboed} mboe/d, Total ${latest.total_mboed} mboe/d. ` +
-    `${unitLabel}.`;
+    `${unitLabel}.` + partialYearNote(annual, monthlyPeriods);
   wireChartTooltipA11y(points, "liquids_mboed", "natural_gas_mboed", "total_mboed");
+}
+
+// The newest calendar year is usually incomplete. In annual-average mode its
+// bar is a genuine average of the months reported so far, but it sits beside
+// full-year bars with no sign of that - say so.
+function partialYearNote(annual, monthlyPeriods) {
+  if (!annual || !monthlyPeriods.length) return "";
+  const last = monthlyPeriods[monthlyPeriods.length - 1];
+  const month = Number(last.slice(4, 6));
+  if (month >= 12) return "";
+  const year = last.slice(0, 4);
+  const inYear = monthlyPeriods.filter((p) => p.startsWith(year)).length;
+  return ` ${year} is a partial year: its bar averages the ${inYear} month(s) reported so far.`;
 }
 
 function wireChartTooltipA11y() {
@@ -531,7 +713,20 @@ function wireChartTooltipA11y() {
   // enhancement without changing renderCommoditySplit's call site.
 }
 
+async function drawChart(el, periods, stacked, total) {
+  lastChart = { periods, stacked, total };
+  const chart = await renderProductionChart(el, periods, stacked, total);
+  renderDataTable();
+  return chart;
+}
+
+function latestOverviewPeriod() {
+  return meta?.monthly_totals_latest_period || monthlyTotals?.[monthlyTotals.length - 1]?.period;
+}
+
 function toggleEmpty(isEmpty) {
+  if (isEmpty) lastChart = null;
+  renderDataTable();
   document.getElementById("production-chart").style.display = isEmpty ? "none" : "";
   document.getElementById("production-empty").hidden = !isEmpty;
 }
@@ -695,7 +890,7 @@ async function renderCompanySplit(state) {
     ? monthlyStacked.map((s) => ({ ...s, data: aggregateSeriesAnnual(periods, s.data) }))
     : monthlyStacked;
 
-  await renderProductionChart(
+  await drawChart(
     document.getElementById("production-chart"),
     displayPeriods,
     stacked,
@@ -777,6 +972,13 @@ async function renderFieldSplit(state) {
     const ranked = Object.values(fields)
       .map((f) => ({ slug: f.slug, latest: [...f.series].reverse().find((p) => p.total_mboed != null) }))
       .filter((f) => f.latest)
+      .filter((f) => {
+        // The Field status filter used to be offered but never applied.
+        // "Producing now" = reported output in the latest published month.
+        if (!state.pstatus || state.pstatus === "all") return true;
+        const producing = f.latest.period === latestOverviewPeriod() && (f.latest.total_mboed || 0) > 0;
+        return state.pstatus === "current" ? producing : !producing;
+      })
       .sort((a, b) => (b.latest.total_mboed || 0) - (a.latest.total_mboed || 0));
     selectedSlugs = ranked.slice(0, topN).map((f) => f.slug);
   }
@@ -838,7 +1040,7 @@ async function renderFieldSplit(state) {
   });
   const stacked = [...fieldSeries, { name: "Other fields", color: otherColor(), data: otherData }];
 
-  await renderProductionChart(
+  await drawChart(
     document.getElementById("production-chart"),
     displayPeriods,
     stacked,
@@ -854,4 +1056,57 @@ async function renderFieldSplit(state) {
     .filter((f) => !selectedSet.has(f.slug))
     .map((f) => f.name);
   renderOtherNote("Other fields", otherNames);
+}
+
+
+// ---------------------------------------------------------------------------
+// Data table + CSV export of exactly what is plotted
+// ---------------------------------------------------------------------------
+
+function chartRows() {
+  if (!lastChart) return null;
+  const { periods, stacked, total } = lastChart;
+  const cols = [...stacked, ...(total ? [total] : [])];
+  const header = ["Period", ...cols.map((c) => c.name)];
+  const rows = periods.map((p, i) => [p, ...cols.map((c) => c.data[i] ?? null)]);
+  return { header, rows };
+}
+
+function renderDataTable() {
+  const details = document.getElementById("production-table");
+  const body = document.getElementById("production-table-body");
+  if (!details || !body) return;
+  details.hidden = !lastChart;
+  if (!details.open || !lastChart) {
+    body.innerHTML = "";
+    return;
+  }
+  const { header, rows } = chartRows();
+  body.innerHTML = `
+    <table class="data-table">
+      <thead><tr>${header.map((h, i) => `<th scope="col"${i ? ' class="num"' : ""}>${escapeHtml(h)}</th>`).join("")}</tr></thead>
+      <tbody>${rows
+        .map((r) => `<tr>${r.map((v, i) => (i ? `<td class="num">${v == null ? "\u2013" : nf1.format(v)}</td>` : `<th scope="row">${escapeHtml(v)}</th>`)).join("")}</tr>`)
+        .join("")}</tbody>
+    </table>`;
+}
+
+function csvCell(v) {
+  if (v == null) return "";
+  const t = String(v);
+  return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+}
+
+function downloadCsv() {
+  const data = chartRows();
+  if (!data) return;
+  const text = [data.header, ...data.rows].map((r) => r.map(csvCell).join(",")).join("\n") + "\n";
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `ukcs-${lastSplitLabel}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

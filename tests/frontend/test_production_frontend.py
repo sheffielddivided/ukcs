@@ -653,3 +653,91 @@ def test_period_note_is_absent_from_the_splits_that_cover_the_full_history(load_
     page.click('button[data-split="commodity"]')
     page.wait_for_timeout(400)
     assert page.locator("#production-period-note").is_hidden()
+
+
+# --- Hardening / UX additions -------------------------------------------------
+
+
+def test_headline_kpis_show_latest_period_and_share(load_app):
+    page = load_app("")
+    page.wait_for_selector("#production-stats details")
+    kpis = page.locator("#production-kpis")
+    assert kpis.locator(".kpi-card").count() == 4
+    text = kpis.inner_text()
+    assert "March 2024" in text and "Liquids" in text and "Natural gas" in text
+    assert "% of total" in text
+
+
+def test_invalid_date_is_rejected_with_a_message_not_silently_applied(load_app):
+    page = load_app("")
+    page.wait_for_selector("#production-stats details")
+    page.fill("#pf-from", "2024-13")
+    page.dispatch_event("#pf-from", "change")
+    page.wait_for_timeout(200)
+    assert "pfrom=" not in page.url
+    err = page.locator("#pf-error")
+    assert not err.is_hidden() and "not a month" in err.inner_text()
+    assert page.locator("#pf-from").get_attribute("aria-invalid") == "true"
+
+
+def test_date_input_accepts_dashed_and_bare_year_forms(load_app):
+    page = load_app("")
+    page.wait_for_selector("#production-stats details")
+    page.fill("#pf-from", "2024-02")
+    page.dispatch_event("#pf-from", "change")
+    page.wait_for_timeout(200)
+    assert "pfrom=202402" in page.url
+    page.fill("#pf-to", "2024")
+    page.dispatch_event("#pf-to", "change")
+    page.wait_for_timeout(200)
+    assert "pto=202412" in page.url
+
+
+def test_start_after_end_is_rejected(load_app):
+    page = load_app("pto=202402")
+    page.wait_for_selector("#production-stats details")
+    page.fill("#pf-from", "202403")
+    page.dispatch_event("#pf-from", "change")
+    page.wait_for_timeout(200)
+    assert "pfrom=" not in page.url
+    assert "must not be after" in page.locator("#pf-error").inner_text()
+
+
+def test_field_status_filter_actually_filters(load_app):
+    # Both fixture fields report in the latest period, so "no longer
+    # producing" must leave nothing - before the fix the control did nothing.
+    page = load_app("psplit=field&pstatus=historical")
+    page.wait_for_selector("#production-stats details")
+    page.wait_for_timeout(300)
+    assert not page.locator("#production-empty").is_hidden()
+    page = load_app("psplit=field&pstatus=current")
+    page.wait_for_selector("#production-stats details")
+    page.wait_for_timeout(300)
+    assert page.locator("#production-empty").is_hidden()
+
+
+def test_data_table_lists_the_plotted_values_and_csv_downloads(load_app):
+    page = load_app("pfreq=monthly")
+    page.wait_for_selector("#production-stats details")
+    page.wait_for_timeout(300)
+    page.click("#production-table > summary")
+    rows = page.locator("#production-table-body tbody tr")
+    rows.first.wait_for(timeout=3000)
+    assert rows.count() > 0
+    assert "liquids" in page.locator("#production-table-body thead").inner_text().lower()
+    with page.expect_download() as dl:
+        page.click("#production-csv")
+    assert dl.value.suggested_filename.endswith(".csv")
+    content = open(dl.value.path()).read()
+    assert content.startswith("Period,Liquids,Natural gas,Total")
+
+
+def test_rapid_split_switching_ends_on_the_last_choice(load_app):
+    page = load_app("")
+    page.wait_for_selector("#production-stats details")
+    for split in ("company", "field", "commodity", "field"):
+        page.click(f'button[data-split="{split}"]')
+    page.wait_for_timeout(600)
+    assert page.locator('button[data-split="field"]').get_attribute("aria-selected") == "true"
+    names = page.evaluate("() => window.__echartsCharts['production-chart'].series.map(s => s.name)")
+    assert "Other fields" in names
